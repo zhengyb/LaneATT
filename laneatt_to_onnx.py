@@ -65,8 +65,9 @@ class LaneATTONNX(torch.nn.Module):
 def export_onnx(onnx_file_path):
     # e.g. laneatt_r18_culane
     backbone_name = 'resnet18'
-    checkpoint_file_path = 'experiments/laneatt_r18_culane/models/model_0015.pt'
-    anchors_freq_path = 'culane_anchors_freq.pt'
+    #checkpoint_file_path = 'experiments/laneatt_r18_culane/models/model_0015.pt'
+    checkpoint_file_path = 'experiments/laneatt_r18_tusimple/models/model_0100.pt'
+    anchors_freq_path = 'data/tusimple_anchors_freq.pt'
 
     # Load specified checkpoint
     model = LaneATT(backbone=backbone_name, anchors_freq_path=anchors_freq_path, topk_anchors=1000)
@@ -78,7 +79,8 @@ def export_onnx(onnx_file_path):
     onnx_model = LaneATTONNX(model)
     dummy_input = torch.randn(1, 3, 360, 640)
     torch.onnx.export(onnx_model, dummy_input, onnx_file_path, opset_version=11)
+    print(f"ONNX model saved to {onnx_file_path}")
 
 
 if __name__ == '__main__':
-    export_onnx('./LaneATT_test.onnx')
+    export_onnx('./LaneATT_r18_tusimple.onnx')
