@@ -17,10 +17,10 @@ from .llamas import LLAMAS
 from .nolabel_dataset import NoLabelDataset
 
 GT_COLOR = (255, 0, 0)
-PRED_HIT_COLOR = (0, 255, 0)
-PRED_MISS_COLOR = (0, 0, 255)
-IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
-IMAGENET_STD = np.array([0.229, 0.224, 0.225])
+PRED_HIT_COLOR = (0, 255, 0) # green
+PRED_MISS_COLOR = (0, 0, 255) # red
+IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]) # 图像归一化均值
+IMAGENET_STD = np.array([0.229, 0.224, 0.225]) # 图像归一化标准差
 
 
 class LaneDataset(Dataset):
@@ -182,7 +182,7 @@ class LaneDataset(Dataset):
             # print(self.annotations[idx]['path'])
             img, label, _ = self.__getitem__(idx)
             label = self.label_to_lanes(label)
-            img = img.permute(1, 2, 0).numpy()
+            img = img.permute(1, 2, 0).numpy() # HWC
             if self.normalize:
                 img = img * np.array(IMAGENET_STD) + np.array(IMAGENET_MEAN)
             img = (img * 255).astype(np.uint8)
@@ -209,6 +209,11 @@ class LaneDataset(Dataset):
             data.append((matches, accs, pred))
         else:
             fp = fn = None
+        # 示例：
+        # data = [
+        #     (None, None, label),
+        #     (matches, accs, pred)
+        # ]
         for matches, accs, datum in data:
             for i, l in enumerate(datum):
                 if matches is None:
@@ -217,12 +222,13 @@ class LaneDataset(Dataset):
                     color = PRED_HIT_COLOR
                 else:
                     color = PRED_MISS_COLOR
-                points = l.points
-                points[:, 0] *= img.shape[1]
+                points = l.points # 归一化坐标
+                points[:, 0] *= img.shape[1] # 转换为像素坐标
                 points[:, 1] *= img.shape[0]
-                points = points.round().astype(int)
-                points += pad
+                points = points.round().astype(int) # 取整
+                points += pad # 添加填充偏移
                 xs, ys = points[:, 0], points[:, 1]
+                # 用相邻点连线绘制2D车道线
                 for curr_p, next_p in zip(points[:-1], points[1:]):
                     img = cv2.line(img,
                                    tuple(curr_p),
@@ -268,15 +274,22 @@ class LaneDataset(Dataset):
         return lanes
 
     def __getitem__(self, idx):
+        # 1. 读取原始图像和标注
         item = self.dataset[idx]
-        img_org = cv2.imread(item['path'])
+        img_org = cv2.imread(item['path']) # BGR
         line_strings_org = self.lane_to_linestrings(item['old_anno']['lanes'])
-        line_strings_org = LineStringsOnImage(line_strings_org, shape=img_org.shape)
+        line_strings_org = LineStringsOnImage(line_strings_org, shape=img_org.shape) # 将标注转换为LineStringsOnImage对象s
+
+        # 2. 数据增强
         for i in range(30):
+            # 3. 数据增强变换
             img, line_strings = self.transform(image=img_org.copy(), line_strings=line_strings_org)
-            line_strings.clip_out_of_image_()
+            line_strings.clip_out_of_image_() # 裁剪超出图像边界的标注
+
+            # 4. 将标注转换为Lane对象
             new_anno = {'path': item['path'], 'lanes': self.linestrings_to_lanes(line_strings)}
             try:
+                # 5. 将标注转换为模型目标格式
                 label = self.transform_annotation(new_anno, img_wh=(self.img_w, self.img_h))['label']
                 break
             except:
@@ -284,10 +297,11 @@ class LaneDataset(Dataset):
                     self.logger.critical('Transform annotation failed 30 times :(')
                     exit()
 
-        img = img / 255.
+        # 6. 图像归一化
+        img = img / 255. # 归一化到[0, 1]
         if self.normalize:
-            img = (img - IMAGENET_MEAN) / IMAGENET_STD
-        img = self.to_tensor(img.astype(np.float32))
+            img = (img - IMAGENET_MEAN) / IMAGENET_STD # ImageNet标准化
+        img = self.to_tensor(img.astype(np.float32)) # 转换为Tensor
         return (img, label, idx)
 
     def __len__(self):

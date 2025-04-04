@@ -93,11 +93,14 @@ class Runner:
                 prediction = model.decode(output, as_lanes=True)
                 predictions.extend(prediction)
                 if self.view:
+                    # (B, C, H, W) -> (H, W, C)
+                    # 0~1 -> 0~255
                     img = (images[0].cpu().permute(1, 2, 0).numpy() * 255).astype(np.uint8)
                     img, fp, fn = dataloader.dataset.draw_annotation(idx, img=img, pred=prediction[0])
                     if self.view == 'mistakes' and fp == 0 and fn == 0:
                         continue
                     cv2.imshow('pred', img)
+                    #cv2.imwrite(f'./datasets/route28_result/image_{idx}.jpg', img)
                     cv2.waitKey(0)
 
         if save_predictions:
