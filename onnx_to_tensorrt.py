@@ -158,7 +158,7 @@ def engine_inference_video(onnx_file_path, video_file_path, target_fps=2.0):
     # Create output video writer
     output_video_path = video_file_path.split('.mp4')[0] + '_result.mp4'
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    outv = cv2.VideoWriter(output_video_path, fourcc, target_fps, (640, 360))
+    outv = cv2.VideoWriter(output_video_path, fourcc, target_fps, (1280, 720))
     
     # Get the original fps of the video
     original_fps = cap.get(cv2.CAP_PROP_FPS)
@@ -169,6 +169,7 @@ def engine_inference_video(onnx_file_path, video_file_path, target_fps=2.0):
     frame_count = 0
     # Do inference with TensorRT
     with get_engine(onnx_file_path, engine_file_path) as engine, engine.create_execution_context() as context:
+        
         inputs, outputs, bindings, stream = common.allocate_buffers(engine)
         while True:
             ret, frame = cap.read()
@@ -187,7 +188,7 @@ def engine_inference_video(onnx_file_path, video_file_path, target_fps=2.0):
                 image = cv2.resize(image, (640, 360), cv2.INTER_LINEAR)
                 # normalize and flatten
                 image = image.astype(np.float32) / 255.0
-                image = image.transpose([2, 0, 1]).flatten()
+                image = image.transpose([2, 0, 1]).flatten() # (H, W, C) -> (C, H, W) -> (C * H * W,)
 
                 # Do inference with TensorRT
                 #with get_engine(onnx_file_path, engine_file_path) as engine, engine.create_execution_context() as context:

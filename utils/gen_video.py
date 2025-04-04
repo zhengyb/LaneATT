@@ -4,7 +4,11 @@ import argparse
 import cv2
 import numpy as np
 from tqdm import tqdm
+import sys
+import os
 
+# 添加项目根目录到Python路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.config import Config
 
 
@@ -13,11 +17,11 @@ def parse_args():
     parser.add_argument("--pred", help=".pkl file to load predictions from", required=True)
     parser.add_argument("--cfg", default="config.yaml", help="Config file")
     parser.add_argument("--cover", default="tusimple_cover.png", help="Cover image file")
-    parser.add_argument("--out", default="video.avi", help="Output filename")
-    parser.add_argument("--view", action="store_true", help="Show predictions instead of creating video")
+    parser.add_argument("--out", default="/app/video.mp4", help="Output filename")
+    parser.add_argument("--view", default=False, action="store_true", help="Show predictions instead of creating video")
     parser.add_argument("--length", type=int, help="Length of the output video (seconds)")
     parser.add_argument("--clips", type=int, help="Number of clips")
-    parser.add_argument("--fps", default=5, type=int, help="Video FPS")
+    parser.add_argument("--fps", default=2, type=int, help="Video FPS")
     parser.add_argument("--legend", help="Path to legend image file")
 
     return parser.parse_args()
@@ -30,7 +34,8 @@ def add_cover_img(video, cover_path, frames=90):
 
 
 def create_video(filename, width, height, fps=5):
-    fourcc = cv2.VideoWriter_fourcc(*'MP42')
+    # fourcc = cv2.VideoWriter_fourcc(*'MP42') # MPEG-4 V2, avi
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v') # MPEG-4, mp4
     video = cv2.VideoWriter(filename, fourcc, float(fps), (width, height))
 
     return video
@@ -47,11 +52,13 @@ def main():
     print('Using resolution {}x{}'.format(width, height))
     legend = cv2.imread(args.legend) if args.legend else None
     if not args.view:
-        video = create_video(args.out, width, height + legend.shape[0] if legend is not None else 0, args.fps)
+        legend_height = legend.shape[0] if legend is not None else 0
+        print(f"Creating video {args.out} with resolution {width}x{height} and legend {legend_height}")
+        video = create_video(args.out, width, height + legend_height, args.fps)
 
     print('Loading predictions...')
     with open(args.pred, "rb") as pred_file:
-        predictions = np.array(pickle.load(pred_file))
+        predictions = np.array(pickle.load(pred_file), dtype=object)
     print("Done.")
 
     if args.length is not None and args.clips is not None:
@@ -84,4 +91,5 @@ def main():
 
 
 if __name__ == '__main__':
+    # python utils/gen_video.py --pred ./predictions.pkl --cfg ./experiments/laneatt_r18_tusimple/config.yaml 
     main()
