@@ -27,9 +27,11 @@ RUN apt-get update && apt-get install -y \
 RUN pip install -r requirements.txt
 #RUN pip install nvidia-dali-cuda120
 # for deployment
-#RUN pip install onnxmltools
-#RUN pip install pycuda
+RUN pip install onnxmltools
+RUN pip install pycuda
 #RUN pip install addict
+RUN pip uninstall tensorboard -y
+RUN pip install tensorboard==2.14.0
 
 RUN cd lib/nms; \
     python setup.py install; \

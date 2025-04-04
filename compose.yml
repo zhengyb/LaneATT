@@ -1,8 +1,7 @@
 version: "3.8"
 services:
   laneatt:
-    #image: nvcr.io/nvidia/tensorflow:23.03-tf1-py3
-    image: laneatt-dev:0.1
+    image: laneatt-dev:0.2
     command: bash
     shm_size: '2gb'  # 增加共享内存
     deploy:
@@ -16,7 +15,7 @@ services:
       - "/dev/video0:/dev/video0:mwr"
     volumes:
       - /home/zyb/LaneATT:/app
-      - /home/zyb/datasets:/app/datasets
+      - /home/zyb/datasets:/datasets
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     network_mode: host
     environment:
