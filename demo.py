@@ -10,6 +10,7 @@ from torch.utils.data.dataset import Dataset
 from scipy.interpolate import InterpolatedUnivariateSpline
 from imgaug.augmentables.lines import LineString, LineStringsOnImage
 import os
+import time
 
 from lib.config import Config
 from lib.experiment import Experiment
@@ -51,7 +52,7 @@ def get_metrics(lanes, _):
     return 0, 0, [1] * len(lanes), [1] * len(lanes)
 
 
-def draw_annotation(pred=None, img=None):
+def draw_annotation(pred=None, img=None, draw_line=True):
     img_h, _, _ = img.shape
     data = []
     if pred is not None:
@@ -71,15 +72,19 @@ def draw_annotation(pred=None, img=None):
             points = points.round().astype(int)  # 取整
             xs, ys = points[:, 0], points[:, 1]
             # 用相邻点连线绘制2D车道线
-            for curr_p, next_p in zip(points[:-1], points[1:]):
-                img = cv2.line(
-                    img,
-                    tuple(curr_p),
-                    tuple(next_p),
-                    color=color,
-                    thickness=3 if matches is None else 3,
-                )
-
+            if draw_line:
+                for curr_p, next_p in zip(points[:-1], points[1:]):
+                    img = cv2.line(
+                        img,
+                        tuple(curr_p),
+                        tuple(next_p),
+                        color=color,
+                        thickness=2
+                    )
+            else:
+                # drop points
+                for i in range(0, len(points), 1):
+                    img = cv2.circle(img, tuple(points[i]), 2, color, -1)
     return img, fp, fn
 
 
@@ -97,12 +102,13 @@ def crop_image(img, crop_ratio=0.2):
 def process_image_path(model, img_path, img_size, device, test_parameters):
     img = cv2.imread(img_path)
     #img = crop_image(img)
-    img, fp, fn, prediction = process_one_frame(model, img, img_size, device, test_parameters)
+    img, fp, fn, prediction = process_one_test(model, img, img_size, device, test_parameters)
     result_path = img_path.replace('/', '_').replace('.jpg', '_result.jpg')
     cv2.imwrite(result_path, img)
     return img, fp, fn, prediction
 
-def process_one_frame(model, img, img_size, device, test_parameters):
+
+def process_one_test(model, img, img_size, device, test_parameters, draw_line=True):
     img = cv2.resize(img, (img_size[1], img_size[0]))
     img_org = img.copy()
     # img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) # ?
@@ -117,18 +123,57 @@ def process_one_frame(model, img, img_size, device, test_parameters):
     # 添加到设备
     images = images.to(device)
     # 模型推理
-    output = model(images, **test_parameters)
+    #print("before model inference....")
+    test = 1000
+    start_time = time.time()
+    for i in range(test):
+        # 添加到设备
+        images = images.to(device)
+        output = model(images, **test_parameters)
+    end_time = time.time()
+    #print("after model inference....")
     prediction = model.decode(output, as_lanes=True)
-
+    #print("after decode....")
+    print("time: ", end_time - start_time)
+    print("fps: ", test / (end_time - start_time))
     # 后处理
-    img, fp, fn = draw_annotation(prediction[0], img_org)
+    img, fp, fn = draw_annotation(prediction[0], img_org, draw_line)
+
+    return img, fp, fn, prediction[0]
+
+def process_one_frame(model, img, img_size, device, test_parameters, draw_line=True):
+    img = cv2.resize(img, (img_size[1], img_size[0]))
+    img_org = img.copy()
+    # img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) # ?
+    img = img / 255.0  # 归一化
+
+    # float32
+    img = img.astype(np.float32)
+    # 转换为Tensor
+    img_tensor = ToTensor()(img)
+    # 添加batch维度
+    images = img_tensor.unsqueeze(0)
+    # 添加到设备
+    images = images.to(device)
+    # 模型推理
+    #print("before model inference....")
+    output = model(images, **test_parameters)
+    #print("after model inference....")
+    prediction = model.decode(output, as_lanes=True)
+    #print("after decode....")
+    # 后处理
+    img, fp, fn = draw_annotation(prediction[0], img_org, draw_line)
 
     return img, fp, fn, prediction[0]
 
 
 def main():
     args = parse_args()
-    exp = Experiment("laneatt_r18_demo", args, mode="test")
+    #exp = Experiment("laneatt_r18_demo", args, mode="test")
+    #exp = Experiment("laneatt_r122_tusimple", args, mode="test")
+    #exp = Experiment("laneatt_r18_culane", args, mode="test")
+    exp = Experiment("laneatt_r18_llamas", args, mode="test")
+
     cfg_path = exp.cfg_path
     # 1. 加载配置和模型
     cfg = Config(cfg_path)
@@ -167,9 +212,14 @@ def main():
         args.output, fourcc, args.output_fps, (img_size[1], img_size[0])
     )
 
-    #skip_frames = 30 * 60 * 2
-    skip_frames = 0
-    handle_frames = 2 * 60 * 10
+    ZYB_VIDEO = False
+    if args.video.find("route28") != -1:
+        ZYB_VIDEO = True
+    if ZYB_VIDEO:
+        skip_frames = 30 * 60 * 2
+    else:
+        skip_frames = 0
+    handle_frames = args.output_fps * 60 * 10
     stop_frames = skip_frames + (frame_interval * handle_frames)
     stop_frames = min(stop_frames, total_frames)
     handle_frames = int((stop_frames - skip_frames) / frame_interval)
@@ -181,8 +231,8 @@ def main():
     os.system(f"rm -rf {output_dir}/*")
     os.makedirs(output_dir, exist_ok=True)
 
-    process_image_path(model, "/app/datasets/tusimple_test_image/0.jpg", img_size, device, test_parameters)
-    process_image_path(model, "/app/datasets/tusimple_test_image/1.jpg", img_size, device, test_parameters)
+    #process_image_path(model, "/app/datasets/tusimple_test_image/0.jpg", img_size, device, test_parameters)
+    #process_image_path(model, "/app/datasets/tusimple_test_image/1.jpg", img_size, device, test_parameters)
     process_image_path(model, "/app/datasets/tusimple_test_image/2.jpg", img_size, device, test_parameters)
 
     frame_count = 0
@@ -201,10 +251,11 @@ def main():
             # 预处理帧
             img = frame
             #img = crop_image(img)
-            #img = cv2.rotate(img, cv2.ROTATE_180)
+            if ZYB_VIDEO:
+                img = cv2.rotate(img, cv2.ROTATE_180)
 
             img, fp, fn, prediction = process_one_frame(
-                model, img, img_size, device, test_parameters
+                model, img, img_size, device, test_parameters, draw_line=True
             )
 
             # 写入/显示结果
