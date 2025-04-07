@@ -66,8 +66,10 @@ def export_onnx(onnx_file_path):
     # e.g. laneatt_r18_culane
     backbone_name = 'resnet18'
     #checkpoint_file_path = 'experiments/laneatt_r18_culane/models/model_0015.pt'
-    checkpoint_file_path = 'experiments/laneatt_r18_tusimple/models/model_0100.pt'
-    anchors_freq_path = 'data/tusimple_anchors_freq.pt'
+    #checkpoint_file_path = 'experiments/laneatt_r18_tusimple/models/model_0100.pt'
+    checkpoint_file_path = 'experiments/laneatt_r18_llamas/models/model_0015.pt'
+    #anchors_freq_path = 'data/tusimple_anchors_freq.pt'
+    anchors_freq_path = 'data/llamas_anchors_freq.pt'
 
     # Load specified checkpoint
     model = LaneATT(backbone=backbone_name, anchors_freq_path=anchors_freq_path, topk_anchors=1000)
@@ -83,4 +85,4 @@ def export_onnx(onnx_file_path):
 
 
 if __name__ == '__main__':
-    export_onnx('./LaneATT_r18_tusimple.onnx')
+    export_onnx('./LaneATT_r18_llamas.onnx')
