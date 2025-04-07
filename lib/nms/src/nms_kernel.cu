@@ -168,7 +168,7 @@ std::vector<at::Tensor> nms_cuda_forward(
   CHECK_CONTIGUOUS(idx);
   CHECK_CONTIGUOUS(mask);
 
-  AT_DISPATCH_FLOATING_TYPES(boxes.type(), "nms_cuda_forward", ([&] {
+  AT_DISPATCH_FLOATING_TYPES(boxes.scalar_type(), "nms_cuda_forward", ([&] {
     nms_kernel<<<blocks, threads>>>(boxes_num,
                                     (scalar_t)nms_overlap_thresh,
                                     boxes.data<scalar_t>(),

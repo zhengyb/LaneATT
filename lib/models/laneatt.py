@@ -320,7 +320,7 @@ class LaneATT(nn.Module):
             # if the proposal does not start at the bottom of the image,
             # extend its proposal until the x is outside the image
             mask = ~((((lane_xs[:start] >= 0.) &
-                       (lane_xs[:start] <= 1.)).cpu().numpy()[::-1].cumprod()[::-1]).astype(np.bool))
+                       (lane_xs[:start] <= 1.)).cpu().numpy()[::-1].cumprod()[::-1]).astype(np.bool_)) # fix for the new version of numpy
             lane_xs[end + 1:] = -2
             lane_xs[:start][mask] = -2
             lane_ys = self.anchor_ys[lane_xs >= 0]
