@@ -1,7 +1,8 @@
 version: "3.8"
 services:
   laneatt:
-    image: laneatt-dev:0.2
+    image: laneatt-dev:0.3
+    #image: laneatt-demo:0.3
     command: bash
     shm_size: '2gb'  # 增加共享内存
     deploy:
