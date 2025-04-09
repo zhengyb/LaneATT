@@ -42,8 +42,8 @@ def get_engine(onnx_file_path, engine_file_path=""):
     def build_engine():
         """Takes an ONNX file and creates a TensorRT engine to run inference with"""
         with trt.Builder(TRT_LOGGER) as builder, builder.create_network(common.EXPLICIT_BATCH) as network, builder.create_builder_config() as config, trt.OnnxParser(network, TRT_LOGGER) as parser, trt.Runtime(TRT_LOGGER) as runtime:
-            config.max_workspace_size = 1 << 30  # 1GB
-            builder.max_batch_size = 1
+            config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 30)  # 1GB
+            #builder.max_batch_size = 1
             # Parse model file
             if not os.path.exists(onnx_file_path):
                 print('ONNX file {} not found, please run laneatt_to_onnx.py first to generate it.'.format(onnx_file_path))
@@ -224,7 +224,8 @@ def engine_inference_video(onnx_file_path, video_file_path, target_fps=5.0):
                 #with get_engine(onnx_file_path, engine_file_path) as engine, engine.create_execution_context() as context:
                 if True:                    
                     # Set host input to the image. The common.do_inference function will copy the input to the GPU before executing.
-                    inputs[0].host = image
+                    np.copyto(inputs[0].host, image.ravel())  # 将图像数据复制到host buffer
+                    [ cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs ]
                     trt_outputs = common.do_inference_v2(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
 
                 # Before doing post-processing, we need to reshape the outputs as the common.do_inference will give us flat arrays.
@@ -254,7 +255,7 @@ def engine_inference(onnx_file_path, image_file_path, benchmark=False,
         warmup: 预热迭代次数 (默认10)
         repeats: 正式测试迭代次数 (默认100)
     """
-    engine_file_path = onnx_file_path.split('.onnx')[0] + '.trt8'
+    engine_file_path = onnx_file_path.split('.onnx')[0] + '.trt10'
 
     # Load test image
     image_raw = cv2.imread(image_file_path)
@@ -264,6 +265,10 @@ def engine_inference(onnx_file_path, image_file_path, benchmark=False,
 
     # Do inference with TensorRT
     with get_engine(onnx_file_path, engine_file_path) as engine, engine.create_execution_context() as context:
+        if engine is None:
+            print("Failed to load engine!")
+            exit(1)
+
         inputs, outputs, bindings, stream = common.allocate_buffers(engine)
         print('\nRunning inference on image {}...'.format(image_file_path))
         inputs[0].host = image
@@ -276,7 +281,7 @@ def engine_inference(onnx_file_path, image_file_path, benchmark=False,
 
             # 预热阶段
             for _ in range(warmup):
-                common.do_inference_v2(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
+                common.do_inference_v3(context, inputs=inputs, outputs=outputs, stream=stream)
             
             # 内存分析
             if profile_mem:
@@ -290,7 +295,7 @@ def engine_inference(onnx_file_path, image_file_path, benchmark=False,
             # 新版PyCUDA事件记录方式
             start_gpu.record(stream)
             for _ in range(repeats):
-                common.do_inference_v2(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
+                common.do_inference_v3(context, inputs=inputs, outputs=outputs, stream=stream)
             end_gpu.record(stream)
             
             stream.synchronize()
@@ -306,7 +311,7 @@ def engine_inference(onnx_file_path, image_file_path, benchmark=False,
             print(f"│ GPU端耗时: {elapsed_gpu:>8.2f} ms/帧   │")
             print(f"│ 理论FPS  : {1000/elapsed_gpu:>8.1f} FPS      │")
 
-            trt_outputs = common.do_inference_v2(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
+            trt_outputs = common.do_inference_v3(context, inputs=inputs, outputs=outputs, stream=stream)
 
             if profile_mem:
                 used_mem = (free_start - min(mem_tracker)) / 1024**2
@@ -314,7 +319,7 @@ def engine_inference(onnx_file_path, image_file_path, benchmark=False,
                 print(f"│ 峰值显存使用: {used_mem:.2f} MB       │")
                 print(f"└{'─'*40}┘")
         else:
-            trt_outputs = common.do_inference_v2(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
+            trt_outputs = common.do_inference_v3(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
 
     if not benchmark:
         # Before doing post-processing, we need to reshape the outputs as the common.do_inference will give us flat arrays.
@@ -345,16 +350,19 @@ if __name__ == '__main__':
     image_file = './datasets/tusimple_test_image/2.jpg'
     #image_file = './datasets/route28_result/5625.jpg'
     onnx_file = './LaneATT_r18_llamas.onnx'
+
+    print("TensorRT version:", trt.__version__)
+
     engine_inference(onnx_file, image_file, benchmark=True, warmup=10, repeats=100)
     #engine_inference_video(onnx_file, './datasets/route28.mp4')
     # Speed test on RTX4090 PC:
     # ┌────────────────────────────────────────┐
-    # │ 推理速度分析 (平均100次)                  │
+    # │ 推理速度分析 (平均100次)    │
     # ├────────────────────────────────────────┤
-    # │ CPU端耗时:     0.97 ms/帧               │
-    # │ GPU端耗时:     0.97 ms/帧               │
-    # │ 理论FPS  :   1031.9 FPS                 │
+    # │ CPU端耗时:     0.91 ms/帧   │
+    # │ GPU端耗时:     0.91 ms/帧   │
+    # │ 理论FPS  :   1094.2 FPS      │
+    # Result saved to ./datasets/tusimple_test_image/2_result.jpg
     # ├────────────────────────────────────────┤
-    # │ 后处理耗时:     1.06 ms/帧               │
-    # │ 端到端FPS :    491.8 FPS                │
-    # └────────────────────────────────────────┘
+    # │ 后处理耗时:     1.68 ms/帧   │
+    # │ 端到端FPS :    385.0 FPS      │
