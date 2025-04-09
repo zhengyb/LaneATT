@@ -1,7 +1,10 @@
 # Use the NVIDIA TensorFlow image as the base
 #FROM nvcr.io/nvidia/pytorch:23.02-py3
 
-FROM nvcr.io/nvidia/pytorch:24.05-py3
+# for RTX 4090 GPU
+# FROM nvcr.io/nvidia/pytorch:24.05-py3
+# for IGPU on Jetson Orin
+FROM nvcr.io/nvidia/pytorch:24.05-py3-igpu
 # Set environment variables to configure tzdata non-interactively
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
