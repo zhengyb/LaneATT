@@ -16,3 +16,15 @@ datasets
 *.trt
 *.trt8
 *.trt10
+*.mp4
+*.jpg
+*.png
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+experiments/
+**/PKG-INFO
+**/SOURCES.txt
+predictions.pkl
+tensorboard/
