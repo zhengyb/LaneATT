@@ -1,0 +1,36 @@
+version: "3.8"
+services:
+  laneatt:
+    image: laneatt-dev:0.3
+    command: bash
+    runtime: nvidia
+    shm_size: '2gb'  # 增加共享内存
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]    
+    volumes:
+      - /home/edge/adas/LaneATT:/app
+      - /home/edge/adas/datasets:/datasets
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+    privileged: true
+    ipc: host
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack:
+        soft: 67108864
+        hard: 67108864
+    stdin_open: true   # equivalent to -i
+    tty: true          # equivalent to -t
+
