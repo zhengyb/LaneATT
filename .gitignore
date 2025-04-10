@@ -12,3 +12,7 @@ evaluate
 *.lprof
 weights
 datasets
+.onnx
+.trt
+.trt8
+.trt10
