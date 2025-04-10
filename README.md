@@ -11,12 +11,23 @@ This repository holds the source code for LaneATT, a novel state-of-the-art lane
 **News (2021-03-01)**: Our paper presenting LaneATT has been accepted to CVPR'21.
 
 ### Table of contents
-1. [Prerequisites](#1-prerequisites)
-2. [Install](#2-install)
-3. [Getting started](#3-getting-started)
-4. [Results](#4-results)
-5. [Code structure](#5-code-structure)
-6. [Citation](#6-Citation)
+- [LaneATT](#laneatt)
+    - [Table of contents](#table-of-contents)
+    - [1. Prerequisites](#1-prerequisites)
+    - [2. Install](#2-install)
+    - [3. Getting started](#3-getting-started)
+      - [Datasets](#datasets)
+      - [Training \& testing](#training--testing)
+      - [Reproducing a result from the paper](#reproducing-a-result-from-the-paper)
+    - [4. Results](#4-results)
+      - [CULane](#culane)
+      - [TuSimple](#tusimple)
+      - [LLAMAS](#llamas)
+    - [5. Code structure](#5-code-structure)
+    - [6. Citation](#6-citation)
+    - [7. Deploy](#7-deploy)
+      - [7.1 Generate ONNX model](#71-generate-onnx-model)
+      - [7.2 Convert ONNX model to TensorRT](#72-convert-onnx-model-to-tensorrt)
 
 
 ### 1. Prerequisites
@@ -163,4 +174,31 @@ If you use this code in your research, please cite:
   booktitle = {Conference on Computer Vision and Pattern Recognition (CVPR)},
   year      = {2021}
 }
+```
+
+### 7. Deploy
+
+#### 7.1 Generate ONNX model
+```bash
+python laneatt_to_onnx.py
+```
+
+Copy the generated `laneatt_r18_llamas.onnx` to the target hardware platform.
+
+#### 7.2 Convert ONNX model to TensorRT
+
+- Choose the right FROM line in the dockerfile
+- Build docker image on the target hardware platform
+```bash
+sudo docker build -f dockerfile -t laneatt-demo:0.3 .
+```
+
+- Start a container on the target hardware platform
+```bash
+sudo docker-compose -f compose-jetson.yml up -d
+```
+
+- Run the following command in the container
+```bash
+python onnx_to_tensorrt.py
 ```
