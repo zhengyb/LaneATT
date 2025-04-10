@@ -1,3 +1,4 @@
+LICENSE
 setup.py
 src/nms.cpp
 src/nms_kernel.cu
