@@ -89,10 +89,11 @@ class Runner:
         split = dataloader.dataset.dataset.split
         test_parameters = self.cfg.get_test_parameters()
         predictions = []
-        ret_dir = f'./datasets/{dataset_name}_{split}_ret'
-        if os.path.exists(ret_dir):
-            shutil.rmtree(ret_dir)
-        os.makedirs(ret_dir, exist_ok=True)
+        if self.view:
+            ret_dir = f'./datasets/{dataset_name}_{split}_ret'
+            if os.path.exists(ret_dir):
+                shutil.rmtree(ret_dir)
+            os.makedirs(ret_dir, exist_ok=True)
         self.exp.eval_start_callback(self.cfg)
         with torch.no_grad():
             for idx, (images, _, _) in enumerate(tqdm(dataloader)):
@@ -105,11 +106,23 @@ class Runner:
                     # 0~1 -> 0~255
                     img = (images[0].cpu().permute(1, 2, 0).numpy() * 255).astype(np.uint8)
                     img, fp, fn = dataloader.dataset.draw_annotation(idx, img=img, pred=prediction[0])
-                    print(f"img: {idx} | fp: {fp} | fn: {fn}")
+                    #print(f"img: {idx} | fp: {fp} | fn: {fn}")
                     if self.view == 'mistakes' and fp == 0 and fn == 0:
                         continue
                     #cv2.imshow('pred', img)
-                    img_name = 'image_%d_fp[%.2f]_fn{%.2f}.jpg' % (idx, fp, fn)
+                    if not isinstance(fn, list):
+                        fp0 = fp
+                    elif len(fp) == 0:
+                        fp0 = 0
+                    else:
+                        fp0 = fp[0]
+                    if not isinstance(fn, list):
+                        fn0 = fn
+                    elif len(fn) == 0:
+                        fn0 = 0
+                    else:
+                        fn0 = fn[0]
+                    img_name = 'image_%d_fp[%.2f]_fn{%.2f}.jpg' % (idx, fp0, fn0)
                     cv2.imwrite(f'./datasets/{dataset_name}_{split}_ret/{img_name}', img)
                     #cv2.waitKey(0)
 

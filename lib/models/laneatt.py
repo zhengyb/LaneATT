@@ -185,7 +185,7 @@ class LaneATT(nn.Module):
                 all_indices = torch.arange(num_positives, dtype=torch.long)
                 ends = (positive_starts + target[:, 4] - 1).round().long()
                 invalid_offsets_mask = torch.zeros((num_positives, 1 + self.n_offsets + 1),
-                                                   dtype=torch.int)  # length + S + pad
+                                                   dtype=torch.int, device=proposals.device)
                 invalid_offsets_mask[all_indices, 1 + positive_starts] = 1
                 invalid_offsets_mask[all_indices, 1 + ends + 1] -= 1
                 invalid_offsets_mask = invalid_offsets_mask.cumsum(dim=1) == 0
