@@ -138,6 +138,7 @@ class Experiment:
         os.makedirs(predictions_dir, exist_ok=True)
         # eval metrics
         metrics = dataset.eval_predictions(predictions, output_basedir=predictions_dir)
+        self.logger.info('Metrics: %s', str(metrics))
         # log tensorboard metrics
         for key in metrics:
             self.tensorboard_writer.add_scalar('{}_metrics/{}'.format(dataset.split, key), metrics[key], epoch)
@@ -145,8 +146,12 @@ class Experiment:
         metrics_path = os.path.join(epoch_results_path, '{}_metrics.json'.format(dataset.split))
         with open(metrics_path, 'w') as results_file:
             json.dump(metrics, results_file)
+
+        self.logger.info('Metrics saved to %s', metrics_path)
         # save the cfg used
         with open(os.path.join(epoch_results_path, 'config.yaml'), 'w') as cfg_file:
             cfg_file.write(str(self.cfg))
+
+        self.logger.info('Results saved to %s', epoch_results_path)
 
         return metrics
