@@ -52,8 +52,13 @@ def main():
             runner.train()
         except KeyboardInterrupt:
             logging.info('Training interrupted.')
-    runner.eval(epoch=args.epoch or exp.get_last_checkpoint_epoch(), save_predictions=args.save_predictions)
+    runner.eval(epoch=args.epoch or exp.get_last_checkpoint_epoch(), on_val=True, save_predictions=args.save_predictions)
 
 
 if __name__ == '__main__':
     main()
+    # Metrics on Llamas val dataset using pretrained r18 model:  
+    # {'TP': 66796, 'FP': 3499, 'FN': 7239, 'Precision': 0.9502240557649904, 'Recall': 0.9022219220638887, 'F1': 0.9256010531421048}
+    # Metrics on Llamas test dataset using self trained r18 model, max_epochs=15:
+    # {'TP': 68027, 'FP': 1749, 'FN': 6008, 'Precision': 0.9749340747534969, 'Recall': 0.9188491929492807, 'F1': 0.94606114970343} 
+
