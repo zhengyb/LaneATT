@@ -1,5 +1,5 @@
 # Training settings
-val_every: 1000
+val_every: 1
 model_checkpoint_interval: 1
 seed: 0
 model:
@@ -12,7 +12,7 @@ model:
     img_h: &img_h 360
     img_w: &img_w 640
 batch_size: 8
-epochs: 15
+epochs: 20
 loss_parameters: {}
 train_parameters:
   conf_threshold:
@@ -77,8 +77,8 @@ datasets:
       S: *S
       dataset: llamas
       split: val
-      img_size: [img_h, *img_w]
-      max_lanes: *max_lanes
+      img_size: [*img_h, *img_w]
+      max_lanes: 5
       normalize: false
       aug_chance: 0
       augmentations:

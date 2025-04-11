@@ -76,8 +76,8 @@ datasets:
       S: *S
       dataset: llamas
       split: val
-      img_size: [img_h, *img_w]
-      max_lanes: *max_lanes
+      img_size: [*img_h, *img_w]
+      max_lanes: 5
       normalize: false
       aug_chance: 0
       augmentations:
