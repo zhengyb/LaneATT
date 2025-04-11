@@ -31,12 +31,15 @@ class LLAMAS(LaneDatasetLoader):
         if max_lanes is not None:
             self.max_lanes = max_lanes
 
+    # Public method
     def get_img_heigth(self, _):
         return self.img_h
 
+    # Public method
     def get_img_width(self, _):
         return self.img_w
 
+    # Public method
     def get_metrics(self, lanes, _):
         # Placeholders
         return [0] * len(lanes), [0] * len(lanes), [1] * len(lanes), [1] * len(lanes)
@@ -55,6 +58,7 @@ class LLAMAS(LaneDatasetLoader):
                     json_paths.append(os.path.join(root, file))
         return json_paths
 
+    # Public method
     def load_annotations(self):
         # the labels are not public for the test set yet
         if self.split == 'test':
@@ -82,8 +86,8 @@ class LLAMAS(LaneDatasetLoader):
 
         for json_path in tqdm(json_paths):
             lanes = get_horizontal_values_for_four_lanes(json_path)
-            lanes = [[(x, y) for x, y in zip(lane, range(self.img_h)) if x >= 0] for lane in lanes]
-            lanes = [lane for lane in lanes if len(lane) > 0]
+            lanes = [[(x, y) for x, y in zip(lane, range(self.img_h)) if x >= 0] for lane in lanes] # remove invalid points
+            lanes = [lane for lane in lanes if len(lane) > 0] # remove empty lanes
             relative_path = self.get_img_path(json_path)
             img_path = os.path.join(self.root, relative_path)
             self.max_lanes = max(self.max_lanes, len(lanes))
@@ -111,6 +115,7 @@ class LLAMAS(LaneDatasetLoader):
 
         return '\n'.join(out)
 
+    # Public method
     def eval_predictions(self, predictions, output_basedir):
         print('Generating prediction output...')
         for idx, pred in enumerate(tqdm(predictions)):

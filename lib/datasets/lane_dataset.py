@@ -16,7 +16,7 @@ from .tusimple import TuSimple
 from .llamas import LLAMAS
 from .nolabel_dataset import NoLabelDataset
 
-GT_COLOR = (255, 0, 0)
+GT_COLOR = (255, 0, 0) # blue
 PRED_HIT_COLOR = (0, 255, 0) # green
 PRED_MISS_COLOR = (0, 0, 255) # red
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406]) # 图像归一化均值
