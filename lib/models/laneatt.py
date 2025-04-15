@@ -29,9 +29,9 @@ class LaneATT(nn.Module):
         self.feature_extractor, backbone_nb_channels, self.stride = get_backbone(backbone, pretrained_backbone)
         self.img_w = img_w
         self.n_strips = S - 1
-        self.n_offsets = S
-        self.fmap_h = img_h // self.stride
-        fmap_w = img_w // self.stride
+        self.n_offsets = S # 72
+        self.fmap_h = img_h // self.stride # 特征图高度11
+        fmap_w = img_w // self.stride # 特征图宽度20
         self.fmap_w = fmap_w
         self.anchor_ys = torch.linspace(1, 0, steps=self.n_offsets, dtype=torch.float32)
         self.anchor_cut_ys = torch.linspace(1, 0, steps=self.fmap_h, dtype=torch.float32)
@@ -45,14 +45,18 @@ class LaneATT(nn.Module):
         # Generate anchors
         self.anchors, self.anchors_cut = self.generate_anchors(lateral_n=72, bottom_n=128)
 
+        print(f"Anchors Number: {len(self.anchors)} \nAnchors Cut Number: {len(self.anchors_cut)}")
+
         # Filter masks if `anchors_freq_path` is provided
         if anchors_freq_path is not None:
             anchors_mask = torch.load(anchors_freq_path).cpu()
+            # print first 10 elements of anchors_mask
+            print(anchors_mask[:10])
             assert topk_anchors is not None
             ind = torch.argsort(anchors_mask, descending=True)[:topk_anchors]
             self.anchors = self.anchors[ind]
             self.anchors_cut = self.anchors_cut[ind]
-
+            print(f"After Filtering: \nAnchors Number: {len(self.anchors)} \nAnchors Cut Number: {len(self.anchors_cut)}")
         # Pre compute indices for the anchor pooling
         self.cut_zs, self.cut_ys, self.cut_xs, self.invalid_mask = self.compute_anchor_cut_indices(
             self.anchor_feat_channels, fmap_w, self.fmap_h)
@@ -247,23 +251,27 @@ class LaneATT(nn.Module):
 
     def generate_side_anchors(self, angles, nb_origins, x=None, y=None):
         if x is None and y is not None:
+            # 底部Anchors, 从右到左等差生成128个参考点，每5个像素点一个anchor
             starts = [(x, y) for x in np.linspace(1., 0., num=nb_origins)]
         elif x is not None and y is None:
+            # 左右侧Anchors, 从下到上等差生成72个参考点
             starts = [(x, y) for y in np.linspace(1., 0., num=nb_origins)]
         else:
             raise Exception('Please define exactly one of `x` or `y` (not neither nor both)')
 
+        # 初始化存储容器
         n_anchors = nb_origins * len(angles)
 
         # each row, first for x and second for y:
         # 2 scores, 1 start_y, start_x, 1 lenght, S coordinates, score[0] = negative prob, score[1] = positive prob
-        anchors = torch.zeros((n_anchors, 2 + 2 + 1 + self.n_offsets))
-        anchors_cut = torch.zeros((n_anchors, 2 + 2 + 1 + self.fmap_h))
-        for i, start in enumerate(starts):
-            for j, angle in enumerate(angles):
-                k = i * len(angles) + j
-                anchors[k] = self.generate_anchor(start, angle)
-                anchors_cut[k] = self.generate_anchor(start, angle, cut=True)
+        anchors = torch.zeros((n_anchors, 2 + 2 + 1 + self.n_offsets)) # 完整锚点
+        anchors_cut = torch.zeros((n_anchors, 2 + 2 + 1 + self.fmap_h)) # 特征图切割版本
+        # 为每个起始点生成不同角度的锚点
+        for i, start in enumerate(starts): # 遍历这条边上的每一个起始坐标点
+            for j, angle in enumerate(angles): # 遍历每个角度
+                k = i * len(angles) + j # 计算当前锚点在完整锚点列表中的索引
+                anchors[k] = self.generate_anchor(start, angle) # 生成完整锚点
+                anchors_cut[k] = self.generate_anchor(start, angle, cut=True) # 生成特征图切割版本
 
         return anchors, anchors_cut
 
@@ -388,8 +396,8 @@ def get_backbone(backbone, pretrained=False):
         stride = 32
     elif backbone == 'resnet18':
         backbone = torch.nn.Sequential(*list(resnet18(pretrained=pretrained).children())[:-2])
-        fmap_c = 512
-        stride = 32
+        fmap_c = 512 # 特征图通道数
+        stride = 32 # 特征图下采样倍率
     else:
         raise NotImplementedError('Backbone not implemented: `{}`'.format(backbone))
 

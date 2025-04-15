@@ -101,7 +101,7 @@ class LaneDataset(Dataset):
         old_lanes = [sorted(lane, key=lambda x: -x[1]) for lane in old_lanes]
         # remove points with same Y (keep first occurrence)
         old_lanes = [self.filter_lane(lane) for lane in old_lanes]
-        # normalize the annotation coordinates
+        # normalize the annotation coordinates. original -> (360, 640)
         old_lanes = [[[x * self.img_w / float(img_w), y * self.img_h / float(img_h)] for x, y in lane]
                      for lane in old_lanes]
         # create tranformed annotations
