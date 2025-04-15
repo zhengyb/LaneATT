@@ -41,7 +41,9 @@ def plot_metrics(epochs, metrics, max_f1, args):
     
     # 标注最大值
     plt.scatter(max_f1['epoch'], max_f1['value'], color='red', zorder=5, 
-                label=f'Max F1: {max_f1["value"]:.4f} @ Epoch {max_f1["epoch"]}')
+                label=(f'Max F1: {max_f1["value"]:.4f} @ Epoch {max_f1["epoch"]}\n'
+                       f'Precision: {max_f1["precision"]:.4f}\n'
+                       f'Recall: {max_f1["recall"]:.4f}'))
     
     plt.title('Validation Metrics over Epochs')
     plt.xlabel('Epoch')
@@ -64,7 +66,7 @@ def main():
     # 收集数据
     metrics = {'Precision': [], 'Recall': [], 'F1': []}
     epochs = []
-    max_f1 = {'value': 0, 'epoch': 0}
+    max_f1 = {'value': 0, 'epoch': 0, 'precision': 0, 'recall': 0}
 
     for epoch_dir in find_epoch_dirs(args.metrics_dir):
         epoch_num = int(epoch_dir.name.split("_")[1])
@@ -80,6 +82,8 @@ def main():
         if data['F1'] > max_f1['value']:
             max_f1['value'] = data['F1']
             max_f1['epoch'] = epoch_num
+            max_f1['precision'] = data['Precision']
+            max_f1['recall'] = data['Recall']
 
     # 绘制图表
     plot_metrics(epochs, metrics, max_f1, args)
