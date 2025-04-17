@@ -85,8 +85,8 @@ class LLAMAS(LaneDatasetLoader):
         print('{} annotations found.'.format(len(json_paths)))
 
         for json_path in tqdm(json_paths):
-            lanes = get_horizontal_values_for_four_lanes(json_path)
-            lanes = [[(x, y) for x, y in zip(lane, range(self.img_h)) if x >= 0] for lane in lanes] # remove invalid points
+            lanes = get_horizontal_values_for_four_lanes(json_path) # 返回4条车道线的像素坐标点（经过过滤）
+            lanes = [[(x, y) for x, y in zip(lane, range(self.img_h)) if x >= 0] for lane in lanes] # 只保留车道线坐标点
             lanes = [lane for lane in lanes if len(lane) > 0] # remove empty lanes
             relative_path = self.get_img_path(json_path)
             img_path = os.path.join(self.root, relative_path)
@@ -100,15 +100,18 @@ class LLAMAS(LaneDatasetLoader):
         return {label: value for label, value in zip(['l0', 'l1', 'r0', 'r1'], lanes)}
 
     def get_prediction_string(self, pred):
-        ys = np.arange(self.img_h) / self.img_h
+        """
+        一行一条车道线，每个像素行都采样，保留x有效的点；
+        """
+        ys = np.arange(self.img_h) / self.img_h # 归一化y采样点
         out = []
         for lane in pred:
-            xs = lane(ys)
-            valid_mask = (xs >= 0) & (xs < 1)
-            xs = xs * self.img_w
+            xs = lane(ys) # 采样点归一化的x坐标
+            valid_mask = (xs >= 0) & (xs < 1) # 过滤无效的坐标点
+            xs = xs * self.img_w # 反归一化, [0, 1] -> [0, 1276]
             lane_xs = xs[valid_mask]
-            lane_ys = ys[valid_mask] * self.img_h
-            lane_xs, lane_ys = lane_xs[::-1], lane_ys[::-1]
+            lane_ys = ys[valid_mask] * self.img_h # 反归一化, [0, 1] -> [0, 717]
+            lane_xs, lane_ys = lane_xs[::-1], lane_ys[::-1] # 反转，从靠近图像底部到顶部
             lane_str = ' '.join(['{:.5f} {:.5f}'.format(x, y) for x, y in zip(lane_xs, lane_ys)])
             if lane_str != '':
                 out.append(lane_str)

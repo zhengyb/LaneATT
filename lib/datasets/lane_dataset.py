@@ -12,7 +12,8 @@ from imgaug.augmentables.lines import LineString, LineStringsOnImage
 from lib.lane import Lane
 
 from .culane import CULane
-from .tusimple import TuSimple
+#from .tusimple import TuSimple
+from .tusimple2 import TuSimple
 from .llamas import LLAMAS
 from .nolabel_dataset import NoLabelDataset
 
@@ -43,15 +44,15 @@ class LaneDataset(Dataset):
             self.dataset = NoLabelDataset(**kwargs)
         else:
             raise NotImplementedError()
-        self.n_strips = S - 1
-        self.n_offsets = S
+        self.n_strips = S - 1 # 71条y轴分割线，不含0和360
+        self.n_offsets = S # 72个y轴偏移量
         self.normalize = normalize
         self.img_h, self.img_w = img_size
-        self.strip_size = self.img_h / self.n_strips
+        self.strip_size = self.img_h / self.n_strips # y轴分割带大小： 360/71 = 5
         self.logger = logging.getLogger(__name__)
 
-        # y at each x offset
-        self.offsets_ys = np.arange(self.img_h, -1, -self.strip_size)
+        # y at each x offset, 73个ys
+        self.offsets_ys = np.arange(self.img_h, -1, -self.strip_size) # arange(360, -1, -5): [360, 355, 350 ... 0]
         self.transform_annotations()
 
         if augmentations is not None:
@@ -101,12 +102,12 @@ class LaneDataset(Dataset):
         old_lanes = [sorted(lane, key=lambda x: -x[1]) for lane in old_lanes]
         # remove points with same Y (keep first occurrence)
         old_lanes = [self.filter_lane(lane) for lane in old_lanes]
-        # normalize the annotation coordinates. original -> (360, 640)
+        # normalize the annotation coordinates. original sizes -> (360, 640)
         old_lanes = [[[x * self.img_w / float(img_w), y * self.img_h / float(img_h)] for x, y in lane]
                      for lane in old_lanes]
         # create tranformed annotations
         lanes = np.ones((self.dataset.max_lanes, 2 + 1 + 1 + 1 + self.n_offsets),
-                        dtype=np.float32) * -1e5  # 2 scores, 1 start_y, 1 start_x, 1 length, S+1 coordinates
+                        dtype=np.float32) * -1e5  # 2 scores, 1 start_y, 1 start_x, 1 length, S coordinates
         # lanes are invalid by default
         lanes[:, 0] = 1
         lanes[:, 1] = 0
@@ -120,39 +121,49 @@ class LaneDataset(Dataset):
             all_xs = np.hstack((xs_outside_image, xs_inside_image))
             lanes[lane_idx, 0] = 0
             lanes[lane_idx, 1] = 1
-            lanes[lane_idx, 2] = len(xs_outside_image) / self.n_strips
-            lanes[lane_idx, 3] = xs_inside_image[0]
-            lanes[lane_idx, 4] = len(xs_inside_image)
-            lanes[lane_idx, 5:5 + len(all_xs)] = all_xs
-
+            lanes[lane_idx, 2] = len(xs_outside_image) / self.n_strips # 1 - start_y: 归一化到[0,1]
+            lanes[lane_idx, 3] = xs_inside_image[0] # start_x: 未归一化
+            lanes[lane_idx, 4] = len(xs_inside_image) # length
+            # 车道线采样点x坐标，隐含y坐标：对应的y坐标从360开始，以5为步进递减； 通常不包含ys=0的点
+            lanes[lane_idx, 5:5 + len(all_xs)] = all_xs 
         new_anno = {'path': anno['path'], 'label': lanes, 'old_anno': anno}
         return new_anno
 
     def sample_lane(self, points, sample_ys):
         # this function expects the points to be sorted
+        # sample_ys: [360, 355, 350, ... 0]
         points = np.array(points)
         if not np.all(points[1:, 1] < points[:-1, 1]):
             raise Exception('Annotaion points have to be sorted')
         x, y = points[:, 0], points[:, 1]
 
         # interpolate points inside domain
+        # 2. 3次样条插值处理器（处理车道线中间部分）
         assert len(points) > 1
+        # y[::-1], x[::-1]  反转坐标序列
         interp = InterpolatedUnivariateSpline(y[::-1], x[::-1], k=min(3, len(points) - 1))
+        # 反转坐标使y递增，满足样条插值要求
+
+        # 3. 确定插值域范围ys
         domain_min_y = y.min()
         domain_max_y = y.max()
         sample_ys_inside_domain = sample_ys[(sample_ys >= domain_min_y) & (sample_ys <= domain_max_y)]
         assert len(sample_ys_inside_domain) > 0
-        interp_xs = interp(sample_ys_inside_domain)
+        interp_xs = interp(sample_ys_inside_domain) # 执行插值
 
         # extrapolate lane to the bottom of the image with a straight line using the 2 points closest to the bottom
+        # 4. 线性外推（处理图像底部区域）
         two_closest_points = points[:2]
         extrap = np.polyfit(two_closest_points[:, 1], two_closest_points[:, 0], deg=1)
         extrap_ys = sample_ys[sample_ys > domain_max_y]
         extrap_xs = np.polyval(extrap, extrap_ys)
-        all_xs = np.hstack((extrap_xs, interp_xs))
+        # 5. 合并结果
+        all_xs = np.hstack((extrap_xs, interp_xs)) # 外推结果在前，插值结果在后
+        # [360, 355, ..., 325（外推）, 320（插值）, 315, ..., 0]
 
         # separate between inside and outside points
-        inside_mask = (all_xs >= 0) & (all_xs < self.img_w)
+        # 6. 划分有效/无效点
+        inside_mask = (all_xs >= 0) & (all_xs < self.img_w) # 判断x坐标是否在图像范围内
         xs_inside_image = all_xs[inside_mask]
         xs_outside_image = all_xs[~inside_mask]
 
@@ -277,7 +288,7 @@ class LaneDataset(Dataset):
         # 1. 读取原始图像和标注
         item = self.dataset[idx]
         img_org = cv2.imread(item['path']) # BGR
-        line_strings_org = self.lane_to_linestrings(item['old_anno']['lanes'])
+        line_strings_org = self.lane_to_linestrings(item['old_anno']['lanes']) # 读取数据集原始标签
         line_strings_org = LineStringsOnImage(line_strings_org, shape=img_org.shape) # 将标注转换为LineStringsOnImage对象s
 
         # 2. 数据增强
@@ -299,7 +310,7 @@ class LaneDataset(Dataset):
 
         # 6. 图像归一化
         img = img / 255. # 归一化到[0, 1]
-        if self.normalize:
+        if self.normalize: # LLAMAS和TuSimple数据集未使用归一化
             img = (img - IMAGENET_MEAN) / IMAGENET_STD # ImageNet标准化
         img = self.to_tensor(img.astype(np.float32)) # 转换为Tensor
         return (img, label, idx)

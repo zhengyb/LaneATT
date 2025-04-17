@@ -90,8 +90,8 @@ def interpolate_lane(points, n=50):
     y = [y for _, y in points]
     tck, _ = splprep([x, y], s=0, t=n, k=min(3, len(points) - 1))
 
-    u = np.linspace(0., 1., n)
-    return np.array(splev(u, tck)).T
+    u = np.linspace(0., 1., n) # 生成50个均匀分布的点，归一化
+    return np.array(splev(u, tck)).T # 插值，并转换成(n, 2)的形状
 
 
 def culane_metric(pred, anno, width=30, iou_threshold=0.5, unofficial=False, img_shape=LLAMAS_IMG_RES):
@@ -121,9 +121,9 @@ def load_prediction(path):
     """
     with open(path, 'r') as data_file:
         img_data = data_file.readlines()
-    img_data = [line.split() for line in img_data]
+    img_data = [line.split() for line in img_data] 
     img_data = [list(map(float, lane)) for lane in img_data]
-    img_data = [[(lane[i], lane[i + 1]) for i in range(0, len(lane), 2)] for lane in img_data]
+    img_data = [[(lane[i], lane[i + 1]) for i in range(0, len(lane), 2)] for lane in img_data] # x, y
     img_data = [lane for lane in img_data if len(lane) >= 2]
 
     return img_data

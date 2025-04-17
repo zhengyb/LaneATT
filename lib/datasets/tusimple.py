@@ -53,13 +53,14 @@ class TuSimple(LaneDatasetLoader):
         return fp, fn, matches, accs
 
     def pred2lanes(self, path, pred, y_samples):
-        ys = np.array(y_samples) / self.img_h
+        # pred to tusimple annotation for 1 image
+        ys = np.array(y_samples) / self.img_h # 归一化到[0,1]
         lanes = []
         for lane in pred:
-            xs = lane(ys)
-            invalid_mask = xs < 0
-            lane = (xs * self.get_img_width(path)).astype(int)
-            lane[invalid_mask] = -2
+            xs = lane(ys) # 采样点归一化的x坐标
+            invalid_mask = xs < 0 # 背景点mask
+            lane = (xs * self.get_img_width(path)).astype(int) # 反归一化到图像像素坐标
+            lane[invalid_mask] = -2 # 背景点赋值为-2
             lanes.append(lane.tolist())
 
         return lanes
@@ -68,15 +69,15 @@ class TuSimple(LaneDatasetLoader):
         self.logger.info('Loading TuSimple annotations...')
         self.annotations = []
         max_lanes = 0
-        for anno_file in self.anno_files:
-            with open(anno_file, 'r') as anno_obj:
-                lines = anno_obj.readlines()
-            for line in lines:
+        for anno_file in self.anno_files: # 遍历所有标签文件
+            with open(anno_file, 'r') as anno_obj: # 打开标签文件
+                lines = anno_obj.readlines() 
+            for line in lines: # 遍历每一行，1个image
                 data = json.loads(line)
-                y_samples = data['h_samples']
-                gt_lanes = data['lanes']
+                y_samples = data['h_samples'] # 1个image的y坐标
+                gt_lanes = data['lanes'] # 1个image的gt_lanes
                 lanes = [[(x, y) for (x, y) in zip(lane, y_samples) if x >= 0] for lane in gt_lanes]
-                lanes = [lane for lane in lanes if len(lane) > 0]
+                lanes = [lane for lane in lanes if len(lane) > 0] # 去掉没有采样点的lane
                 max_lanes = max(max_lanes, len(lanes))
                 self.annotations.append({
                     'path': os.path.join(self.root, data['raw_file']),
@@ -97,6 +98,7 @@ class TuSimple(LaneDatasetLoader):
         self.annotations = list(map(transform, self.annotations))
 
     def pred2tusimpleformat(self, idx, pred, runtime):
+        # 1 image
         runtime *= 1000.  # s to ms
         img_name = self.annotations[idx]['old_anno']['org_path']
         h_samples = self.annotations[idx]['old_anno']['y_samples']
@@ -117,6 +119,7 @@ class TuSimple(LaneDatasetLoader):
     def eval_predictions(self, predictions, output_basedir, runtimes=None):
         pred_filename = os.path.join(output_basedir, 'tusimple_predictions.json')
         self.save_tusimple_predictions(predictions, pred_filename, runtimes)
+        # 默认测试数据集只有一个json文件，所以anno_files[0]
         result = json.loads(LaneEval.bench_one_submit(pred_filename, self.anno_files[0]))
         table = {}
         for metric in result:

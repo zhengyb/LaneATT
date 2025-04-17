@@ -59,7 +59,7 @@ def get_labels(dataset_root, split='test'):
 def _extend_lane(lane, projection_matrix):
     """Extends marker closest to the camera
 
-    Adds an extra marker that reaches the end of the image
+    Adds an extra marker that reaches the end of the image. 假设最近的车道线标记是直线.
 
     Parameters
     ----------
@@ -71,11 +71,13 @@ def _extend_lane(lane, projection_matrix):
 
     # The markers are automatically detected, mapped, and labeled. There exist faulty ones,
     # e.g., horizontal markers which need to be filtered
+
+    # 过滤水平标记和垂直标记。（垂直标记为什么要过滤?)
     filtered_markers = filter(
         lambda x: (x['pixel_start']['y'] != x['pixel_end']['y'] and x['pixel_start']['x'] != x['pixel_end']['x']),
         lane['markers'])
     # might be the first marker in the list but not guaranteed
-    closest_marker = min(filtered_markers, key=lambda x: x['world_start']['z'])
+    closest_marker = min(filtered_markers, key=lambda x: x['world_start']['z']) # 最近的车道线标记
 
     if closest_marker['world_start']['z'] < 0:  # This one likely equals "if False"
         return lane
@@ -86,6 +88,7 @@ def _extend_lane(lane, projection_matrix):
     y_gradient = (closest_marker['world_end']['y'] - closest_marker['world_start']['y']) /\
         (closest_marker['world_end']['z'] - closest_marker['world_start']['z'])
 
+    # 通过线性外推计算z=1时的x, y坐标（假设z坐标向相机方向延伸）
     zero_x = closest_marker['world_start']['x'] - (closest_marker['world_start']['z'] - 1) * x_gradient
     zero_y = closest_marker['world_start']['y'] - (closest_marker['world_start']['z'] - 1) * y_gradient
 
@@ -95,14 +98,18 @@ def _extend_lane(lane, projection_matrix):
     pixel_y_gradient = (closest_marker['pixel_end']['y'] - closest_marker['pixel_start']['y']) /\
         (closest_marker['pixel_end']['x'] - closest_marker['pixel_start']['x'])
 
+    # 在图像坐标系，通过线性外推计算y=716时的x坐标
     pixel_zero_x = closest_marker['pixel_start']['x'] + (716 - closest_marker['pixel_start']['y']) * pixel_x_gradient
     if pixel_zero_x < 0:
+        # 计算x=0时的y坐标
         left_y = closest_marker['pixel_start']['y'] - closest_marker['pixel_start']['x'] * pixel_y_gradient
         new_pixel_point = (0, left_y)
     elif pixel_zero_x > 1276:
+        # 计算x=1276时的y坐标
         right_y = closest_marker['pixel_start']['y'] + (1276 - closest_marker['pixel_start']['x']) * pixel_y_gradient
         new_pixel_point = (1276, right_y)
     else:
+        # 计算y=716时的x坐标
         new_pixel_point = (pixel_zero_x, 716)
 
     new_marker = {
@@ -178,6 +185,7 @@ class SplineCreator():
 
         # Collect all x values from all markers along a given line. There may be multiple
         # intersecting markers, i.e., multiple entries for some y values
+        # Step1: 在车道线内部，按直线作插值.
         x_values = [[] for i in range(717)]
         for marker in lane['markers']:
             x_values[marker['pixel_start']['y']].append(marker['pixel_start']['x'])
@@ -202,6 +210,7 @@ class SplineCreator():
         if not between_markers:
             return x_values  # TODO ypp
 
+        # Step2: 用直线插值填补marker之间缺失的点
         # # interpolate between markers
         current_y = 0
         while x_values[current_y] == -1:  # skip missing first entries
@@ -220,7 +229,8 @@ class SplineCreator():
                     next_set_y += 1
                     if next_set_y >= 717:
                         raise StopIteration
-
+                # 此时，next_set_y 是下一个marker的起始y坐标
+                # 直线插值
                 x_values[current_y] = x_values[current_y - 1] + (x_values[next_set_y] - x_values[current_y - 1]) /\
                     (next_set_y - current_y + 1)
                 current_y += 1
@@ -277,6 +287,7 @@ def get_horizontal_values_for_four_lanes(json_path):
     -------
     List of [l1, l0, r0, r1], each of which represents a list of ints the length of
     the number of vertical pixels of the image
+    返回 [l1, l0, r0, r1] 的列表，每个子列表包含整数值，长度与图像的垂直像素数相同
 
     Notes
     -----
@@ -285,6 +296,12 @@ def get_horizontal_values_for_four_lanes(json_path):
     the lines could be interpolated in 3D, a better approach to spline interpolation could
     be used, there is barely any error checking, sometimes the splines oscillate too much.
     This was used for a quick poly-line regression training only.
+    当前点基于样条曲线生成。样条插值基于分割值实现，仍有较大改进空间，例如：
+    - 可在三维空间进行线段插值
+    - 可采用更好的样条插值方法
+    - 缺乏错误检查机制
+    - 样条曲线有时会出现过度振荡
+    本实现仅用于快速折线回归训练
     """
 
     sc = SplineCreator(json_path)
@@ -328,7 +345,7 @@ def _fix_lane_names(label):
     r_counter = 0
     mapping = {}
     lane_ids = [lane['lane_id'] for lane in label['lanes']]
-    for key in sorted(lane_ids):
+    for key in sorted(lane_ids): # 按车道线ID排序, l0, l1, l2, l3, r0, r1, r2
         if key[0] == 'l':
             mapping[key] = 'l' + str(l_counter)
             l_counter += 1
@@ -344,12 +361,16 @@ def read_json(json_path, min_lane_height=20):
     with open(json_path, 'r') as jf:
         label_content = json.load(jf)
 
+    # 过滤高度小于 min_lane_height 的车道线
     _filter_lanes_by_size(label_content, min_height=min_lane_height)
+    # 过滤包含少于 min_markers 个标记的车道线
     _filter_few_markers(label_content, min_markers=2)
+    # 修复车道线名称
     _fix_lane_names(label_content)
 
     content = {'projection_matrix': label_content['projection_matrix'], 'lanes': label_content['lanes']}
 
+    # 坐标值数据类型变换, str -> int/float
     for lane in content['lanes']:
         for marker in lane['markers']:
             for pixel_key in marker['pixel_start'].keys():
