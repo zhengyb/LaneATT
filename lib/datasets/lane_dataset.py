@@ -12,8 +12,7 @@ from imgaug.augmentables.lines import LineString, LineStringsOnImage
 from lib.lane import Lane
 
 from .culane import CULane
-#from .tusimple import TuSimple
-from .tusimple2 import TuSimple
+from .tusimple import TuSimple
 from .llamas import LLAMAS
 from .nolabel_dataset import NoLabelDataset
 

@@ -1,8 +1,10 @@
 import os
 import pickle as pkl
-
+import json
 import numpy as np
 from tqdm import tqdm
+import cv2
+
 
 from .lane_dataset_loader import LaneDatasetLoader
 
@@ -57,6 +59,94 @@ class LLAMAS(LaneDatasetLoader):
                 if file.endswith(".json"):
                     json_paths.append(os.path.join(root, file))
         return json_paths
+
+    def get_json_paths_per_dir(self):
+        json_paths = []
+        for subdir in os.listdir(self.labels_dir):
+            subdir_path = os.path.join(self.labels_dir, subdir)
+            if not os.path.isdir(subdir_path):
+                continue
+            this_dir_json_paths = {}
+            this_dir_json_paths['dirname'] = subdir
+            this_dir_json_paths['json_paths'] = [os.path.join(subdir_path, file) for file in os.listdir(subdir_path) if file.endswith(".json")]
+            json_paths.append(this_dir_json_paths)
+
+        return json_paths
+
+
+    def convert_lanes_to_tusimple_format(self, lanes):
+        """
+        lanes: list of list of tuples, each tuple is (x, y)
+        """
+        tusimple_h_samples = np.arange(160, 720, 10).astype(np.int32)
+        tusimple_lanes = []
+
+        for lane in lanes:
+            xs = np.ones(720).astype(np.int32) * -2
+            for x, y in lane:
+                xs[y] = x
+            tusimple_xs = xs[tusimple_h_samples].tolist()
+            tusimple_lanes.append(tusimple_xs)
+
+        return tusimple_lanes
+
+    def _resize_image_to_tusimple_shape(self, org_img_path, resized_img_path):
+        org_img = cv2.imread(org_img_path)
+        resized_img = cv2.resize(org_img, (1280, 720))
+        cv2.imwrite(resized_img_path, resized_img)
+
+    def convert_annotations_to_tusimple_format(self, output_dir, copy_images=False, sample_interval=10):
+        if self.split == 'test':
+            raise ValueError("Test set does not have annotations")
+        
+        h_samples = np.arange(160, 720, 10).astype(np.int32).tolist()
+
+        self.max_lanes = 0
+        print("Searching annotation files...")
+        json_paths = self.get_json_paths_per_dir()
+        print("Found {} subdirectories".format(len(json_paths)))
+        processed_cnt = 0
+        for subdir_json_paths in json_paths:
+            subdir_name = subdir_json_paths['dirname']
+            print("Processing subdirectory: {}".format(subdir_name))
+            json_paths = subdir_json_paths['json_paths']
+            tusimple_label_filename = f'label_llamas_{subdir_name}.json'
+            tusimple_label_path = os.path.join(output_dir, tusimple_label_filename)
+            tusimple_label_file = open(tusimple_label_path, 'w')
+
+            sample_cnt = 0
+            for json_path in tqdm(json_paths):
+                if sample_cnt % sample_interval != 0:
+                    sample_cnt += 1
+                    continue
+                sample_cnt += 1
+                processed_cnt += 1
+                # For one image
+                lanes = get_horizontal_values_for_four_lanes(json_path, 
+                                                             img_shape=(self.img_h, self.img_w), 
+                                                            resized_img_shape=(720, 1280))
+                lanes = [[(x, y) for x, y in zip(lane, range(self.img_h)) if x >= 0] for lane in lanes]
+                lanes = [lane for lane in lanes if len(lane) > 0]            
+                relative_path = self.get_img_path(json_path)
+                img_path = os.path.join(self.root, relative_path)
+                output_img_file = img_path
+                if copy_images:
+                    # img_path: datasets/llamas/color_images/valid/images-2014-12-22-12-35-10_mapping_280S_ramps/1419280841_0205251000_color_rect.png
+                    output_img_path = img_path.split('/')[4:-1]
+                    output_img_name = img_path.split('/')[-1].replace('_color_rect.png', '_color_rect_tusimple.jpg')
+                    output_img_file = os.path.join("clips", *output_img_path, output_img_name)
+                    os.makedirs(os.path.dirname(output_img_file), exist_ok=True)
+                    self._resize_image_to_tusimple_shape(img_path, output_dir + "/" + output_img_file )
+                #print(lanes)
+                tusimple_lanes = self.convert_lanes_to_tusimple_format(lanes)
+                tusimple_label = {
+                    "raw_file": output_img_file,
+                    "lanes": tusimple_lanes,
+                    "h_samples": h_samples,
+                }
+                tusimple_label_file.write(json.dumps(tusimple_label) + '\n')
+
+        print("Processed {} images".format(processed_cnt))
 
     # Public method
     def load_annotations(self):

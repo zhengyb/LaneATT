@@ -56,7 +56,7 @@ def get_labels(dataset_root, split='test'):
     return label_paths
 
 
-def _extend_lane(lane, projection_matrix):
+def _extend_lane(lane, projection_matrix, img_shape=(717, 1276)):
     """Extends marker closest to the camera
 
     Adds an extra marker that reaches the end of the image. 假设最近的车道线标记是直线.
@@ -72,12 +72,19 @@ def _extend_lane(lane, projection_matrix):
     # The markers are automatically detected, mapped, and labeled. There exist faulty ones,
     # e.g., horizontal markers which need to be filtered
 
-    # 过滤水平标记和垂直标记。（垂直标记为什么要过滤?)
+    img_h, img_w = img_shape
+    max_img_h = img_h - 1
+    # TODO: 过滤水平标记和垂直标记。（垂直标记为什么要过滤?)
     filtered_markers = filter(
         lambda x: (x['pixel_start']['y'] != x['pixel_end']['y'] and x['pixel_start']['x'] != x['pixel_end']['x']),
         lane['markers'])
+    #filtered_markers = lane['markers']
     # might be the first marker in the list but not guaranteed
-    closest_marker = min(filtered_markers, key=lambda x: x['world_start']['z']) # 最近的车道线标记
+    try:
+        closest_marker = min(filtered_markers, key=lambda x: x['world_start']['z']) # 最近的车道线标记
+    except:
+        print(lane)
+        raise Exception("No valid markers found")
 
     if closest_marker['world_start']['z'] < 0:  # This one likely equals "if False"
         return lane
@@ -99,18 +106,18 @@ def _extend_lane(lane, projection_matrix):
         (closest_marker['pixel_end']['x'] - closest_marker['pixel_start']['x'])
 
     # 在图像坐标系，通过线性外推计算y=716时的x坐标
-    pixel_zero_x = closest_marker['pixel_start']['x'] + (716 - closest_marker['pixel_start']['y']) * pixel_x_gradient
+    pixel_zero_x = closest_marker['pixel_start']['x'] + (max_img_h - closest_marker['pixel_start']['y']) * pixel_x_gradient
     if pixel_zero_x < 0:
         # 计算x=0时的y坐标
         left_y = closest_marker['pixel_start']['y'] - closest_marker['pixel_start']['x'] * pixel_y_gradient
         new_pixel_point = (0, left_y)
-    elif pixel_zero_x > 1276:
+    elif pixel_zero_x > img_w:
         # 计算x=1276时的y坐标
-        right_y = closest_marker['pixel_start']['y'] + (1276 - closest_marker['pixel_start']['x']) * pixel_y_gradient
-        new_pixel_point = (1276, right_y)
+        right_y = closest_marker['pixel_start']['y'] + (img_w - closest_marker['pixel_start']['x']) * pixel_y_gradient
+        new_pixel_point = (img_w, right_y)
     else:
         # 计算y=716时的x坐标
-        new_pixel_point = (pixel_zero_x, 716)
+        new_pixel_point = (pixel_zero_x, max_img_h)
 
     new_marker = {
         'lane_marker_id': 'FAKE',
@@ -156,15 +163,17 @@ class SplineCreator():
     It has an x coordinate for each value for each lane
 
     """
-    def __init__(self, json_path):
+    def __init__(self, json_path, img_shape=(717., 1276.), resized_img_shape=(None, None)):
         self.json_path = json_path
         self.json_content = read_json(json_path)
         self.lanes = self.json_content['lanes']
         self.lane_marker_points = {}
         self.sampled_points = {}  # <--- the interesting part
-        self.debug_image = np.zeros((717, 1276, 3), dtype=np.uint8)
+        self.img_h, self.img_w = img_shape
+        self.resized_img_h, self.resized_img_w = resized_img_shape
+        self.debug_image = np.zeros((self.img_h, self.img_w, 3), dtype=np.uint8)
 
-    def _sample_points(self, lane, ypp=5, between_markers=True):
+    def _sample_points(self, lane, ypp=5, between_markers=True, img_h=None):
         """ Markers are given by start and endpoint. This one adds extra points
         which need to be considered for the interpolation. Otherwise the spline
         could arbitrarily oscillate between start and end of the individual markers
@@ -182,11 +191,13 @@ class SplineCreator():
         the start and end points are too sparse.
         Removing upper lane markers that have starting and end points mapped into the same pixel.
         """
+        if img_h is None:
+            img_h = self.img_h
 
         # Collect all x values from all markers along a given line. There may be multiple
         # intersecting markers, i.e., multiple entries for some y values
         # Step1: 在车道线内部，按直线作插值.
-        x_values = [[] for i in range(717)]
+        x_values = [[] for i in range(img_h)]
         for marker in lane['markers']:
             x_values[marker['pixel_start']['y']].append(marker['pixel_start']['x'])
 
@@ -219,7 +230,7 @@ class SplineCreator():
         # Also possible using numpy.interp when accounting for beginning and end
         next_set_y = 0
         try:
-            while current_y < 717:
+            while current_y < img_h:
                 if x_values[current_y] != -1:  # set. Nothing to be done
                     current_y += 1
                     continue
@@ -227,7 +238,7 @@ class SplineCreator():
                 # Finds target x value for interpolation
                 while next_set_y <= current_y or x_values[next_set_y] == -1:
                     next_set_y += 1
-                    if next_set_y >= 717:
+                    if next_set_y >= img_h:
                         raise StopIteration
                 # 此时，next_set_y 是下一个marker的起始y坐标
                 # 直线插值
@@ -239,6 +250,18 @@ class SplineCreator():
             pass  # Done with lane
 
         return x_values
+
+    def resize_lane_markers(self, lane):
+        """ Resize lane to resized image size """
+        x_factor = self.resized_img_w / self.img_w
+        y_factor = self.resized_img_h / self.img_h
+        if self.resized_img_h is not None and self.resized_img_w is not None:
+            for marker in lane['markers']:
+                marker['pixel_start']['x'] = int(marker['pixel_start']['x'] * x_factor)
+                marker['pixel_start']['y'] = int(marker['pixel_start']['y'] * y_factor)
+                marker['pixel_end']['x'] = int(marker['pixel_end']['x'] * x_factor)
+                marker['pixel_end']['y'] = int(marker['pixel_end']['y'] * y_factor)
+        return lane
 
     def _lane_points_fit(self, lane):
         # TODO name and docstring
@@ -257,8 +280,20 @@ class SplineCreator():
         This one can be drastically improved. Probably fairly easy as well.
         """
         # NOTE all variable names represent image coordinates, interpolation coordinates are swapped!
-        lane = _extend_lane(lane, self.json_content['projection_matrix'])
-        sampled_points = self._sample_points(lane, ypp=1)
+        img_h, img_w = self.img_h, self.img_w
+        try:
+            if self.resized_img_h is not None and self.resized_img_w is not None:
+                resized_lane = self.resize_lane_markers(lane)
+                img_h, img_w = self.resized_img_h, self.resized_img_w
+            else:
+                resized_lane = lane
+            extended_lane = _extend_lane(resized_lane, self.json_content['projection_matrix'], img_shape=(img_h, img_w)) # extend in original image size
+            lane = extended_lane
+        except Exception as e:
+            print(e)
+            print(lane)
+            raise e
+        sampled_points = self._sample_points(lane, ypp=1, img_h=img_h)
         self.sampled_points[lane['lane_id']] = sampled_points
 
         return sampled_points
@@ -269,7 +304,7 @@ class SplineCreator():
             self._lane_points_fit(lane)
 
 
-def get_horizontal_values_for_four_lanes(json_path):
+def get_horizontal_values_for_four_lanes(json_path, img_shape=(717, 1276), resized_img_shape=(None, None)):
     """ Gets an x value for every y coordinate for l1, l0, r0, r1
 
     This allows to easily train a direct curve approximation. For each value along
@@ -304,13 +339,20 @@ def get_horizontal_values_for_four_lanes(json_path):
     本实现仅用于快速折线回归训练
     """
 
-    sc = SplineCreator(json_path)
+    sc = SplineCreator(json_path, img_shape=img_shape, resized_img_shape=resized_img_shape)
     sc.create_all_points()
 
-    l1 = sc.sampled_points.get('l1', [-1] * 717)
-    l0 = sc.sampled_points.get('l0', [-1] * 717)
-    r0 = sc.sampled_points.get('r0', [-1] * 717)
-    r1 = sc.sampled_points.get('r1', [-1] * 717)
+    if resized_img_shape[0] is not None:
+        img_h = resized_img_shape[0]
+    else:
+        img_h = img_shape[0]
+
+    pad_lane = list(np.ones(img_h).astype(np.int32) * -1)
+
+    l1 = sc.sampled_points.get('l1', pad_lane)
+    l0 = sc.sampled_points.get('l0', pad_lane)
+    r0 = sc.sampled_points.get('r0', pad_lane)
+    r1 = sc.sampled_points.get('r1', pad_lane)
 
     lanes = [l1, l0, r0, r1]
     return lanes
