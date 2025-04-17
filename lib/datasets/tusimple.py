@@ -10,10 +10,40 @@ from utils.tusimple_metric import LaneEval
 from .lane_dataset_loader import LaneDatasetLoader
 
 SPLIT_FILES = {
-    'train+val': ['label_data_0313.json', 'label_data_0601.json', 'label_data_0531.json'],
-    'train': ['label_data_0313.json', 'label_data_0601.json'],
-    'val': ['label_data_0531.json'],
-    'test': ['test_label.json'],
+    'train+val': ['label_data_0313.json', 'label_data_0601.json', 'label_data_0531.json',
+                  # convert from LLAMAS
+                  'label_llamas_images-2014-12-18-14-17-05.json',
+                  'label_llamas_images-2014-12-22-13-04-51_mapping_280N_2nd_lane.json',
+                  'label_llamas_images-2014-12-18-14-28-45.json',
+                  'label_llamas_images-2014-12-22-14-01-36_mapping_280N_3rd_lane.json',
+                  'label_llamas_images-2014-12-18-14-43-48.json',
+                  'label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json',
+                  'label_llamas_images-2014-12-22-12-02-45_mapping_280N_ramps.json',
+                  'label_llamas_images-2014-12-22-14-36-42_mapping_280N_4th_lane.json',
+                  'label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json',
+                  'label_llamas_images-2014-12-22-15-18-11_mapping_RTC_to_280_left_lanes.json'
+                  ],
+    'train': ['label_data_0313.json', 'label_data_0601.json',
+                  # convert from LLAMAS
+                  'label_llamas_images-2014-12-18-14-17-05.json',
+                  'label_llamas_images-2014-12-22-13-04-51_mapping_280N_2nd_lane.json',
+                  'label_llamas_images-2014-12-18-14-43-48.json',
+                  'label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json',
+                  'label_llamas_images-2014-12-22-12-02-45_mapping_280N_ramps.json',
+                  'label_llamas_images-2014-12-22-14-36-42_mapping_280N_4th_lane.json',
+                  'label_llamas_images-2014-12-22-15-18-11_mapping_RTC_to_280_left_lanes.json'
+              ],
+    'val': ['label_data_0531.json',
+            # convert from LLAMAS
+                  'label_llamas_images-2014-12-18-14-28-45.json',
+                  'label_llamas_images-2014-12-22-14-01-36_mapping_280N_3rd_lane.json',
+                  'label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json',
+            ],
+    'test': ['test_label.json', 
+             # convert from LLAMAS
+             'label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json',
+             'label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json'
+            ],
 }
 
 
@@ -87,6 +117,7 @@ class TuSimple(LaneDatasetLoader):
                     'aug': False,
                     'y_samples': y_samples
                 })
+            print(f"Loaded anno_file: {anno_file}")
 
         if self.split == 'train':
             random.shuffle(self.annotations)
@@ -119,12 +150,21 @@ class TuSimple(LaneDatasetLoader):
     def eval_predictions(self, predictions, output_basedir, runtimes=None):
         pred_filename = os.path.join(output_basedir, 'tusimple_predictions.json')
         self.save_tusimple_predictions(predictions, pred_filename, runtimes)
-        # 默认测试数据集只有一个json文件，所以anno_files[0]
-        result = json.loads(LaneEval.bench_one_submit(pred_filename, self.anno_files[0]))
+        # merge anno_files
+        if len(self.anno_files) > 1:
+            merged_anno_file = os.path.join(output_basedir, 'merged_anno.json')
+            with open(merged_anno_file, 'w') as of:
+                for anno_file in self.anno_files:
+                    with open(anno_file, 'r') as f:
+                        of.write(f.read())
+            merged_anno = merged_anno_file
+        else:
+            merged_anno = self.anno_files[0]
+        
+        result = json.loads(LaneEval.bench_one_submit(pred_filename, merged_anno))
         table = {}
         for metric in result:
             table[metric['name']] = metric['value']
-
         return table
 
     def __getitem__(self, idx):

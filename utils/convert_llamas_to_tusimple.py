@@ -37,5 +37,5 @@ if __name__ == "__main__":
     convert_llamas_to_tusimple(split='train', 
                                llamas_root_dir=llamas_root_dir, 
                                tusimple_dir=tusimple_train_dir,
-                               copy_images=True,
+                               copy_images=False,
                                sample_interval=10)

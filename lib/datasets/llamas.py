@@ -129,18 +129,18 @@ class LLAMAS(LaneDatasetLoader):
                 lanes = [lane for lane in lanes if len(lane) > 0]            
                 relative_path = self.get_img_path(json_path)
                 img_path = os.path.join(self.root, relative_path)
-                output_img_file = img_path
+                output_img_path = img_path.split('/')[4:-1]
+                output_img_name = img_path.split('/')[-1].replace('_color_rect.png', '_color_rect_tusimple.jpg')
+                output_relative_path = os.path.join("clips", *output_img_path, output_img_name)
                 if copy_images:
                     # img_path: datasets/llamas/color_images/valid/images-2014-12-22-12-35-10_mapping_280S_ramps/1419280841_0205251000_color_rect.png
-                    output_img_path = img_path.split('/')[4:-1]
-                    output_img_name = img_path.split('/')[-1].replace('_color_rect.png', '_color_rect_tusimple.jpg')
-                    output_img_file = os.path.join("clips", *output_img_path, output_img_name)
+                    output_img_file = output_dir + "/" + output_relative_path
                     os.makedirs(os.path.dirname(output_img_file), exist_ok=True)
-                    self._resize_image_to_tusimple_shape(img_path, output_dir + "/" + output_img_file )
+                    self._resize_image_to_tusimple_shape(img_path, output_img_file)
                 #print(lanes)
                 tusimple_lanes = self.convert_lanes_to_tusimple_format(lanes)
                 tusimple_label = {
-                    "raw_file": output_img_file,
+                    "raw_file": output_relative_path,
                     "lanes": tusimple_lanes,
                     "h_samples": h_samples,
                 }
