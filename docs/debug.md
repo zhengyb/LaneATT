@@ -56,6 +56,7 @@
 - 准备好training数据集;
 - 修改data/laneatt_xxx_yyy.yml文件，去掉其中`anchors_freq_path: 'data/tusimple_anchors_freq.pt'`这一行；
 - 运行`python utils/gen_anchor_mask.py --cfg ./cfgs/laneatt_tusimple_resnet18.yml --output tusimple_250418_anchors_mask.pt`
+- 生成pt文件的同时会生成可视化文件*.png。
 
 ## 如何重新训练
 - 准备好数据集
@@ -67,3 +68,6 @@
 ```
 Metrics plot saved to: experiments/laneatt_r18_tusimple/results/tusimple_metrics_plot.png
 ```
+
+## 如何测试推理速率:
+- 运行`python utils/speed.py --cfg ./cfgs/laneatt_tusimple_resnet18.yml --model_path ./experiments/laneatt_r18_tusimple/backup_models/model_0019_250418pm2.pt `
