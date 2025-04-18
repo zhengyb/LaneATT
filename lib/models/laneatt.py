@@ -45,7 +45,7 @@ class LaneATT(nn.Module):
         # Generate anchors
         self.anchors, self.anchors_cut = self.generate_anchors(lateral_n=72, bottom_n=128)
 
-        print(f"Anchors Number: {len(self.anchors)} \nAnchors Cut Number: {len(self.anchors_cut)}")
+        #print(f"Anchors Number: {len(self.anchors)} \nAnchors Cut Number: {len(self.anchors_cut)}")
 
         # Filter masks if `anchors_freq_path` is provided
         if anchors_freq_path is not None:
@@ -56,7 +56,7 @@ class LaneATT(nn.Module):
             ind = torch.argsort(anchors_mask, descending=True)[:topk_anchors]
             self.anchors = self.anchors[ind]
             self.anchors_cut = self.anchors_cut[ind]
-            print(f"After Filtering: \nAnchors Number: {len(self.anchors)} \nAnchors Cut Number: {len(self.anchors_cut)}")
+            #print(f"After Filtering: \nAnchors Number: {len(self.anchors)} \nAnchors Cut Number: {len(self.anchors_cut)}")
         # Pre compute indices for the anchor pooling
         self.cut_zs, self.cut_ys, self.cut_xs, self.invalid_mask = self.compute_anchor_cut_indices(
             self.anchor_feat_channels, fmap_w, self.fmap_h)

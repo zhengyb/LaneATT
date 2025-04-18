@@ -55,7 +55,7 @@ datasets:
           parameters:
             p: 0.5
 
-      root: "datasets/tusimple"
+      root: "datasets/TUSimple/tusimple"
 
   test:
     type: LaneDataset
@@ -68,7 +68,7 @@ datasets:
       normalize: false
       aug_chance: 0
       augmentations:
-      root: "datasets/tusimple-test"
+      root: "datasets/TUSimple/tusimple-test"
 
   val:
     type: LaneDataset
@@ -81,4 +81,4 @@ datasets:
       normalize: false
       aug_chance: 0
       augmentations:
-      root: "datasets/tusimple"
+      root: "datasets/TUSimple/tusimple"
