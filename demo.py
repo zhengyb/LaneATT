@@ -105,6 +105,7 @@ def process_image_path(model, img_path, img_size, device, test_parameters):
     img, fp, fn, prediction = process_one_test(model, img, img_size, device, test_parameters)
     result_path = img_path.replace('/', '_').replace('.jpg', '_result.jpg')
     cv2.imwrite(result_path, img)
+    print("result_path: ", result_path)
     return img, fp, fn, prediction
 
 
@@ -167,13 +168,17 @@ def process_one_frame(model, img, img_size, device, test_parameters, draw_line=T
     return img, fp, fn, prediction[0]
 
 
-def main():
+def main_img():
+    pass
+
+
+def main_video():
     args = parse_args()
     #exp = Experiment("laneatt_r18_demo", args, mode="test")
     #exp = Experiment("laneatt_r122_tusimple", args, mode="test")
     #exp = Experiment("laneatt_r18_culane", args, mode="test")
-    exp = Experiment("laneatt_r18_llamas", args, mode="test")
-
+    #exp = Experiment("laneatt_r18_llamas", args, mode="test")
+    exp = Experiment("laneatt_r18_tusimple", args, mode="test")
     cfg_path = exp.cfg_path
     # 1. 加载配置和模型
     cfg = Config(cfg_path)
@@ -181,7 +186,8 @@ def main():
 
     # 2. 初始化模型
     model = cfg.get_model()
-    epoch = exp.get_last_checkpoint_epoch()
+    #epoch = exp.get_last_checkpoint_epoch()
+    epoch = 19
     model_path = exp.get_checkpoint_path(epoch)
     print("Loading model %s", model_path)
     model.load_state_dict(exp.get_epoch_model(epoch))
@@ -204,14 +210,22 @@ def main():
 
     print("height: ", height, "width: ", width, "total_frames: ", total_frames, "fps: ", fps, "frame_interval: ", frame_interval)
 
+    output_dir = "./outputs"
+    os.system(f"rm -rf {output_dir}/*")
+    os.makedirs(output_dir, exist_ok=True)
+
     # 5. 准备输出视频
     if os.path.exists(args.output):
         os.remove(args.output)
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # H.264 encoding,mp4v
+    #args.output = args.output.replace('.mp4', '.mp4')
     out = cv2.VideoWriter(
-        args.output, fourcc, args.output_fps, (img_size[1], img_size[0])
+        args.output, fourcc, args.output_fps, (img_size[1], img_size[0]),
+        isColor=True  # Explicitly specify color video
     )
-
+    print(f"output video path: {args.output}, fps: {args.output_fps}, size: {img_size[1]}x{img_size[0]}")
+    if not out.isOpened():
+        raise IOError("Failed to open video writer. Check codec and output path.")
     ZYB_VIDEO = False
     if args.video.find("route28") != -1:
         ZYB_VIDEO = True
@@ -227,13 +241,15 @@ def main():
     print("stop_frames: ", stop_frames)
     print("total_frames: ", total_frames)
 
-    output_dir = "./outputs"
-    os.system(f"rm -rf {output_dir}/*")
-    os.makedirs(output_dir, exist_ok=True)
 
-    #process_image_path(model, "/app/datasets/tusimple_test_image/0.jpg", img_size, device, test_parameters)
-    #process_image_path(model, "/app/datasets/tusimple_test_image/1.jpg", img_size, device, test_parameters)
-    process_image_path(model, "/app/datasets/tusimple_test_image/2.jpg", img_size, device, test_parameters)
+
+    if False:
+        process_image_path(model, "/app/datasets/tusimple_test_image/0.jpg", img_size, device, test_parameters)
+        process_image_path(model, "/app/datasets/tusimple_test_image/1.jpg", img_size, device, test_parameters)
+        process_image_path(model, "/app/datasets/tusimple_test_image/2.jpg", img_size, device, test_parameters)
+
+        print("process_image_path done")
+        return
 
     frame_count = 0
     with torch.no_grad():
@@ -257,8 +273,14 @@ def main():
             img, fp, fn, prediction = process_one_frame(
                 model, img, img_size, device, test_parameters, draw_line=True
             )
-
-            # 写入/显示结果
+            h, w = img.shape[:2]
+            assert (w, h) == (img_size[1], img_size[0]), f"Size mismatch: {(w, h)} != {(img_size[1], img_size[0])}"
+            
+            img_dtype = img.dtype
+            if img_dtype != np.uint8:
+                raise ValueError(f"Frame dtype mismatch: {img_dtype} vs expected np.uint8")
+            
+            # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) 
             out.write(img)
             output_path = os.path.join(output_dir, f"image_{frame_count}.jpg")
             cv2.imwrite(output_path, img)
@@ -271,9 +293,9 @@ def main():
     print("frame_count: ", frame_count)
     cap.release()
     out.release()
-    cv2.destroyAllWindows()
+    #cv2.destroyAllWindows()
     print(f"Processing completed. Output saved to {args.output}")
 
 
 if __name__ == "__main__":
-    main()
+    main_video()
