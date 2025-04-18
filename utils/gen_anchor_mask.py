@@ -220,8 +220,11 @@ def main_save_mask():
     torch.backends.cudnn.benchmark = False
 
     save_mask(args.cfg, args.output)
+    anchors_mask_png = args.output.replace('.pt', '.png')
+    draw_mask(args.output, anchors_mask_png)
 
-if __name__ == '__main__':
+
+def main_draw_mask():
     mask_path = './data/llamas_anchors_freq.pt'
     output_path = './data/llamas_anchors_mask.png'
 
@@ -236,5 +239,10 @@ if __name__ == '__main__':
 
     merge_mask(mask_path_list[0][0], mask_path_list[1][0], mask_path_list[2][0], './data/sum_anchors_mask.pt')
     draw_mask('./data/sum_anchors_mask.pt', './data/sum_anchors_mask.png')
+
+
+if __name__ == '__main__':
+    #main_draw_mask()
+    main_save_mask()
 
     #view_mask('./experiments/laneatt_r18_llamas/config.yaml', None)
