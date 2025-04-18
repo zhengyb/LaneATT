@@ -50,3 +50,9 @@
   模型初始化时，会用anchor_mask频率文件来过滤anchor。该文件是通过对训练集中的anchor进行统计得到的。
   如果训练集和测试集的anchor分布差异较大，那么模型在测试集上的表现会较差。用于生成该文件的训练数据集应该具备良好的多样性。
 - 其他
+
+
+## 如何重新生存锚文件
+- 准备好training数据集;
+- 修改data/laneatt_xxx_yyy.yml文件，去掉其中`anchors_freq_path: 'data/tusimple_anchors_freq.pt'`这一行；
+- 运行`python utils/gen_anchor_mask.py --cfg ./cfgs/laneatt_tusimple_resnet18.yml --output tusimple_250418_anchors_mask.pt`
