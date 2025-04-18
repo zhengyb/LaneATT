@@ -1,9 +1,13 @@
 import time
 import argparse
-
+import os
+import sys
 import torch
 from thop import profile, clever_format
 
+
+# add parent directory to python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.config import Config
 
 
