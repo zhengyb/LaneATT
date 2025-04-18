@@ -78,7 +78,7 @@
 
 ## 5. 2025 April 18 PM3
 - 数据集： 同上。
-- anchors文件： ==不给定anchors mask文件！！==
+- anchors文件： ==不给定anchors mask文件！！使用全部2876个anchors进行训练和推理。==
 - epochs: 20
 - 开始时间: 2025-04-18 19:27
 - 结束时间： 2025-04-18 20:56
