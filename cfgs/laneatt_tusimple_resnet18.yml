@@ -9,7 +9,7 @@ model:
     S: &S 72
     topk_anchors: 1000
     #anchors_freq_path: 'data/tusimple_anchors_freq.pt'
-    anchors_freq_path: 'data/tusimple_250418_anchors_mask.pt'
+    anchors_freq_path: 'data/tusimple_250418pm_anchors_mask.pt'
     img_h: &img_h 360
     img_w: &img_w 640
 batch_size: 8
