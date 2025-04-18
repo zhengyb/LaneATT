@@ -11,7 +11,7 @@ evaluate
 **/*egg-info
 *.lprof
 weights
-datasets
+/datasets/
 *.onnx
 *.trt
 *.trt8
