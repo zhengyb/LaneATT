@@ -52,7 +52,18 @@
 - 其他
 
 
-## 如何重新生存锚文件
+## 如何重新生成锚文件
 - 准备好training数据集;
 - 修改data/laneatt_xxx_yyy.yml文件，去掉其中`anchors_freq_path: 'data/tusimple_anchors_freq.pt'`这一行；
 - 运行`python utils/gen_anchor_mask.py --cfg ./cfgs/laneatt_tusimple_resnet18.yml --output tusimple_250418_anchors_mask.pt`
+
+## 如何重新训练
+- 准备好数据集
+- 修改`./cfgs/laneatt_tusimple_resnet18.yml`，选择训练参数
+- 运行`python main.py train --exp_name laneatt_r18_tusimple --cfg ./cfgs/laneatt_tusimple_resnet18.yml `
+
+## 训练后如何生成指标图
+- 运行`python utils/viz_metrics.py experiments/laneatt_r18_tusimple/results`
+```
+Metrics plot saved to: experiments/laneatt_r18_tusimple/results/tusimple_metrics_plot.png
+```

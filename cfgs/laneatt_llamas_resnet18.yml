@@ -8,11 +8,11 @@ model:
     backbone: resnet18
     S: &S 72
     topk_anchors: 1000
-    anchors_freq_path: 'data/llamas_anchors_freq.pt'
+    anchors_freq_path: 'data/sum_anchors_mask.pt'
     img_h: &img_h 360
     img_w: &img_w 640
 batch_size: 8
-epochs: 100
+epochs: 20
 loss_parameters: {}
 train_parameters:
   conf_threshold:

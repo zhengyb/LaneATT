@@ -1,5 +1,5 @@
 # Model settings
-val_every: 10
+val_every: 2
 model_checkpoint_interval: 1
 seed: 0
 model:
@@ -8,11 +8,12 @@ model:
     backbone: resnet18
     S: &S 72
     topk_anchors: 1000
-    anchors_freq_path: 'data/tusimple_anchors_freq.pt'
+    #anchors_freq_path: 'data/tusimple_anchors_freq.pt'
+    anchors_freq_path: 'data/tusimple_250418_anchors_mask.pt'
     img_h: &img_h 360
     img_w: &img_w 640
 batch_size: 8
-epochs: 100
+epochs: 20
 loss_parameters: {}
 train_parameters:
   conf_threshold:
@@ -38,7 +39,7 @@ datasets:
     parameters:
       S: *S
       dataset: tusimple
-      split: train+val
+      split: train
       img_size: [*img_h, *img_w]
       max_lanes: *max_lanes
       normalize: false
