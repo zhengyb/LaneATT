@@ -88,6 +88,7 @@ def plot_metrics_llamas(epochs, metrics, max_f1, args):
 def main():
     parser = argparse.ArgumentParser(description='Visualize training metrics')
     parser.add_argument('metrics_dir', type=str, help='Root directory containing epoch folders')
+    parser.add_argument('--use_f1', type=bool, default=True, help='Use F1 score')
     args = parser.parse_args()
 
     # 收集数据
@@ -97,11 +98,11 @@ def main():
     tusimple_max_f1 = {'value': 0, 'epoch': 0, 'FP': 0, 'FN': 0}
     epochs = []
 
-    dataset_type = "llamas"
+    bench_type = "llamas"
     metrics = llamas_metrics
     max_metrics = llamas_max_f1
-    if "tusimple" in args.metrics_dir:
-        dataset_type = "tusimple"
+    if not args.use_f1:
+        bench_type = "tusimple"
         metrics = tusimple_metrics
         max_metrics = tusimple_max_f1
 
@@ -118,7 +119,7 @@ def main():
             metrics[k].append(data[k])
         
         # 更新最大F1值
-        if dataset_type == "llamas":
+        if bench_type == "llamas":
             main_metric = data['F1']
         else:
             main_metric = data['Accuracy']    
@@ -131,7 +132,7 @@ def main():
             max_metrics[k] = data[k]
 
     # 绘制图表
-    if dataset_type == "llamas":
+    if bench_type == "llamas":
         plot_metrics_llamas(epochs, metrics, max_metrics, args)
     else:
         plot_metrics_tusimple(epochs, metrics, max_metrics, args)
