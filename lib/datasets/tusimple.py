@@ -167,7 +167,7 @@ class TuSimple(LaneDatasetLoader):
         with open(filename, "w") as output_file:
             output_file.write("\n".join(lines))
 
-    def eval_predictions(self, predictions, output_basedir, runtimes=None):
+    def eval_predictions(self, predictions, output_basedir, runtimes=None, use_f1=True):
         pred_filename = os.path.join(output_basedir, "tusimple_predictions.json")
         self.save_tusimple_predictions(predictions, pred_filename, runtimes)
         # merge anno_files
@@ -181,9 +181,12 @@ class TuSimple(LaneDatasetLoader):
         else:
             merged_anno = self.anno_files[0]
 
-        #result = json.loads(LaneEval.bench_one_submit(pred_filename, merged_anno))
-        #  {'Accuracy': 0.9565514103730626, 'FP': 0.0803883295664674, 'FN': 0.04018560372577228, 'FPS': 1000.0}
-        result = json.loads(LaneEval.bench_one_submit_f1(pred_filename, merged_anno))
+        if use_f1:
+            result = json.loads(LaneEval.bench_one_submit_f1(pred_filename, merged_anno))
+        else:
+            result = json.loads(LaneEval.bench_one_submit(pred_filename, merged_anno))
+            #  {'Accuracy': 0.9565514103730626, 'FP': 0.0803883295664674, 'FN': 0.04018560372577228, 'FPS': 1000.0}
+        
         table = {}
         for metric in result:
             table[metric["name"]] = metric["value"]

@@ -138,7 +138,7 @@ class Experiment:
         os.makedirs(predictions_dir, exist_ok=True)
         # eval metrics
         metrics = dataset.eval_predictions(predictions, output_basedir=predictions_dir)
-        self.logger.info('Metrics: %s', str(metrics))
+        #self.logger.info('Metrics: %s', str(metrics))
         # log tensorboard metrics
         for key in metrics:
             self.tensorboard_writer.add_scalar('{}_metrics/{}'.format(dataset.split, key), metrics[key], epoch)

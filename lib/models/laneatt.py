@@ -50,8 +50,6 @@ class LaneATT(nn.Module):
         # Filter masks if `anchors_freq_path` is provided
         if anchors_freq_path is not None:
             anchors_mask = torch.load(anchors_freq_path).cpu()
-            # print first 10 elements of anchors_mask
-            print(anchors_mask[:10])
             assert topk_anchors is not None
             ind = torch.argsort(anchors_mask, descending=True)[:topk_anchors]
             self.anchors = self.anchors[ind]

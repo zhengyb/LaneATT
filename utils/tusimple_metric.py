@@ -2,7 +2,9 @@
 import numpy as np
 import ujson as json
 from sklearn.linear_model import LinearRegression
+from functools import partial
 
+from p_tqdm import t_map, p_map
 from scipy.optimize import linear_sum_assignment
 from utils.llamas_metric import discrete_cross_iou, continuous_cross_iou
 
@@ -154,6 +156,8 @@ class LaneEval(object):
         gts = {img['raw_file']: img for img in json_gt}
         total_tp, total_fp, total_fn = 0., 0., 0.
         run_times = []
+        predictions = []
+        annotations = []
         for pred in json_pred:
             # for each image
             if 'raw_file' not in pred or 'lanes' not in pred or 'run_time' not in pred:
@@ -177,15 +181,15 @@ class LaneEval(object):
             for lane in pred_lanes:
                 lane_ious = [(x, y) for x, y in zip(lane, y_samples) if x >= 0]
                 iou_pred_lanes.append(lane_ious)
+            predictions.append(iou_pred_lanes)
+            annotations.append(iou_gt_lanes)
 
-            try:
-                tp, fp, fn = LaneEval.bench_f1(iou_pred_lanes, iou_gt_lanes, run_time)
-            except BaseException as e:
-                raise Exception('Format of lanes error.')
-            total_tp += tp
-            total_fp += fp
-            total_fn += fn
+        results = p_map(partial(_culane_metric, width=30, unofficial=False, img_shape=TUSIMPLE_IMG_RES),
+                        predictions, annotations)
         num = len(gts)
+        total_tp = sum(tp for tp, _, _ in results)
+        total_fp = sum(fp for _, fp, _ in results)
+        total_fn = sum(fn for _, _, fn in results)
         if total_tp == 0:
             precision = 0
             recall = 0
@@ -193,7 +197,7 @@ class LaneEval(object):
         else:
             precision = float(total_tp) / (total_tp + total_fp)
             recall = float(total_tp) / (total_tp + total_fn)
-            f1 = 2 * precision * recall / (precision + recall)        
+            f1 = 2 * precision * recall / (precision + recall)      
         return json.dumps([{
             'name': 'F1',
             'value': f1,
