@@ -3,6 +3,34 @@ import numpy as np
 import ujson as json
 from sklearn.linear_model import LinearRegression
 
+from scipy.optimize import linear_sum_assignment
+from utils.llamas_metric import discrete_cross_iou, continuous_cross_iou
+
+TUSIMPLE_IMG_RES = (720, 1280)
+
+
+def _culane_metric(pred, anno, width=30, iou_threshold=0.5, unofficial=False, img_shape=TUSIMPLE_IMG_RES):
+    """Computes CULane's metric for a single image"""
+    if len(pred) == 0:
+        return 0, 0, len(anno)
+    if len(anno) == 0:
+        return 0, len(pred), 0
+        
+    #interp_pred = np.array([interpolate_lane(pred_lane, n=50) for pred_lane in pred])  # (4, 50, 2)
+    pred = np.array([np.array(pred_lane) for pred_lane in pred], dtype=object)
+    anno = np.array([np.array(anno_lane) for anno_lane in anno], dtype=object)
+
+    if unofficial:
+        ious = continuous_cross_iou(pred, anno, width=width, img_shape=img_shape)
+    else:
+        ious = discrete_cross_iou(pred, anno, width=width, img_shape=img_shape)
+
+    row_ind, col_ind = linear_sum_assignment(1 - ious)
+    tp = int((ious[row_ind, col_ind] > iou_threshold).sum())
+    fp = len(pred) - tp
+    fn = len(anno) - tp
+    return tp, fp, fn
+
 
 class LaneEval(object):
     lr = LinearRegression()
@@ -23,6 +51,7 @@ class LaneEval(object):
     @staticmethod
     def line_accuracy(pred, gt, thresh):
         # x轴偏差小于thresh，则认为预测正确
+        # -100 表示无效值，远大于thresh
         pred = np.array([p if p >= 0 else -100 for p in pred])
         gt = np.array([g if g >= 0 else -100 for g in gt])
         return np.sum(np.where(np.abs(pred - gt) < thresh, 1., 0.)) / len(gt)
@@ -30,6 +59,15 @@ class LaneEval(object):
     @staticmethod
     def distances(pred, gt):
         return np.abs(pred - gt)
+
+
+
+    @staticmethod
+    def bench_f1(pred, gt, running_time, get_matches=False):
+        """
+        """
+        tp, fp, fn = _culane_metric(pred, gt, unofficial=False)
+        return tp, fp, fn
 
     @staticmethod
     def bench(pred, gt, y_samples, running_time, get_matches=False):
@@ -95,6 +133,97 @@ class LaneEval(object):
                 min(len(gt), 4.), 1.), my_matches, my_accs, my_dists
         return s / max(min(4.0, len(gt)), 1.), fp / len(pred) if len(pred) > 0 else 0., fn / max(min(len(gt), 4.), 1.)
 
+
+    @staticmethod
+    def bench_one_submit_f1(pred_file, gt_file):
+        """
+        bench_one_submit_f1 函数用于计算预测车道线与真实车道线的F1得分。
+        input:
+            pred_file: 预测的车道线
+            gt_file: 真实的车道线
+        output:
+            f1: f1得分
+        """
+        try:
+            json_pred = [json.loads(line) for line in open(pred_file).readlines()]
+        except BaseException as e:
+            raise Exception('Fail to load json file of the prediction.')
+        json_gt = [json.loads(line) for line in open(gt_file).readlines()]
+        if len(json_gt) != len(json_pred):
+            raise Exception('We do not get the predictions of all the test tasks')
+        gts = {img['raw_file']: img for img in json_gt}
+        total_tp, total_fp, total_fn = 0., 0., 0.
+        run_times = []
+        for pred in json_pred:
+            # for each image
+            if 'raw_file' not in pred or 'lanes' not in pred or 'run_time' not in pred:
+                raise Exception('raw_file or lanes or run_time not in some predictions.')
+            raw_file = pred['raw_file']
+            pred_lanes = pred['lanes']
+            run_time = pred['run_time']
+            run_times.append(run_time)
+            if raw_file not in gts:
+                raise Exception('Some raw_file from your predictions do not exist in the test tasks.')
+            gt = gts[raw_file]
+            gt_lanes = gt['lanes']
+            y_samples = gt['h_samples']
+
+            # format gt_lanes & pred_lanes
+            iou_gt_lanes = []
+            for lane in gt_lanes:
+                lane_ious = [(x, y) for x, y in zip(lane, y_samples) if x >= 0]
+                iou_gt_lanes.append(lane_ious)
+            iou_pred_lanes = []
+            for lane in pred_lanes:
+                lane_ious = [(x, y) for x, y in zip(lane, y_samples) if x >= 0]
+                iou_pred_lanes.append(lane_ious)
+
+            try:
+                tp, fp, fn = LaneEval.bench_f1(iou_pred_lanes, iou_gt_lanes, run_time)
+            except BaseException as e:
+                raise Exception('Format of lanes error.')
+            total_tp += tp
+            total_fp += fp
+            total_fn += fn
+        num = len(gts)
+        if total_tp == 0:
+            precision = 0
+            recall = 0
+            f1 = 0
+        else:
+            precision = float(total_tp) / (total_tp + total_fp)
+            recall = float(total_tp) / (total_tp + total_fn)
+            f1 = 2 * precision * recall / (precision + recall)        
+        return json.dumps([{
+            'name': 'F1',
+            'value': f1,
+            'order': 'desc'
+        }, {
+            'name': 'Precision',
+            'value': precision,
+            'order': 'desc'
+        }, {
+            'name': 'Recall',
+            'value': recall,
+            'order': 'desc'
+        }, {
+            'name': 'FPS',
+            'value': 1000. / np.mean(run_times),
+            'order': 'desc'
+        }, {
+            'name': 'TP',
+            'value': total_tp,
+            'order': 'desc'
+        }, {
+            'name': 'FP',
+            'value': total_fp,
+            'order': 'desc'
+        }, {
+            'name': 'FN',
+            'value': total_fn,
+            'order': 'desc'
+        }])
+    
     @staticmethod
     def bench_one_submit(pred_file, gt_file):
         try:

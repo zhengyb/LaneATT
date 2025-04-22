@@ -181,7 +181,9 @@ class TuSimple(LaneDatasetLoader):
         else:
             merged_anno = self.anno_files[0]
 
-        result = json.loads(LaneEval.bench_one_submit(pred_filename, merged_anno))
+        #result = json.loads(LaneEval.bench_one_submit(pred_filename, merged_anno))
+        #  {'Accuracy': 0.9565514103730626, 'FP': 0.0803883295664674, 'FN': 0.04018560372577228, 'FPS': 1000.0}
+        result = json.loads(LaneEval.bench_one_submit_f1(pred_filename, merged_anno))
         table = {}
         for metric in result:
             table[metric["name"]] = metric["value"]

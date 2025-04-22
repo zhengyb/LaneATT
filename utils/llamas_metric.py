@@ -56,7 +56,10 @@ def draw_lane(lane, img=None, img_shape=None, width=30):
 
 def discrete_cross_iou(xs, ys, width=30, img_shape=LLAMAS_IMG_RES):
     """For each lane in xs, compute its Intersection Over Union (IoU) with each lane in ys by drawing the lanes on
-    an image"""
+    an image
+    xs: pred lane point list in [(x, y), ...]
+    ys: gt lane point list in [(x, y), ...]
+    """
     xs = [draw_lane(lane, img_shape=img_shape, width=width) > 0 for lane in xs]
     ys = [draw_lane(lane, img_shape=img_shape, width=width) > 0 for lane in ys]
 
@@ -68,10 +71,10 @@ def discrete_cross_iou(xs, ys, width=30, img_shape=LLAMAS_IMG_RES):
     return ious
 
 
-def continuous_cross_iou(xs, ys, width=30):
+def continuous_cross_iou(xs, ys, width=30, img_shape=LLAMAS_IMG_RES):
     """For each lane in xs, compute its Intersection Over Union (IoU) with each lane in ys using the area between each
     pair of points"""
-    h, w = IMAGE_HEIGHT, IMAGE_WIDTH
+    h, w = img_shape
     image = Polygon([(0, 0), (0, h - 1), (w - 1, h - 1), (w - 1, 0)])
     xs = [LineString(lane).buffer(distance=width / 2., cap_style=1, join_style=2).intersection(image) for lane in xs]
     ys = [LineString(lane).buffer(distance=width / 2., cap_style=1, join_style=2).intersection(image) for lane in ys]
