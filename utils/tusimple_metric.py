@@ -63,7 +63,7 @@ class LaneEval(object):
 
 
     @staticmethod
-    def bench_f1(pred, gt, running_time, get_matches=False):
+    def bench_f1(pred, gt, running_time):
         """
         """
         tp, fp, fn = _culane_metric(pred, gt, unofficial=False)
