@@ -28,7 +28,7 @@ def convert_image_one(openlane_img_path, tusimple_img_path):
     resized_img = cv2.resize(openlane_img, (tusimple_w, resized_h))
     # cut image
     cut_h = get_cut_h(old_img_shape=(img_h, img_w))
-    print(f"cut_h: {cut_h}")
+    #print(f"cut_h: {cut_h}")
     cut_img = resized_img[cut_h:, :, :]
     # save image
     cv2.imwrite(tusimple_img_path, cut_img)
@@ -104,12 +104,12 @@ def convert_lane_one(lane_uv, old_img_shape=(1280, 1920), h_samples=list(range(1
         # interpolate between y and y2
         # print(f"last_point: {last_point}, next_point: {next_point}")
         if last_point is not None and next_point is not None:
-            # TODO: 插值
             new_x = last_point[0] + (next_point[0] - last_point[0]) * (y - last_point[1]) / (next_point[1] - last_point[1])
             new_lane_points[y] = [new_x, y]
             #print(f"interpolate ({new_x},{y}) between ({last_point[0]},{last_point[1]}) and ({next_point[0]},{next_point[1]})")
         else:
             print(f"no next point found for {y}")
+            raise ValueError(f"no next point found for {y}")
 
     new_lane_points = [[int(round(p[0])), int(round(p[1]))] for p in new_lane_points]
     #new_lane_points = np.array(new_lane_points)
