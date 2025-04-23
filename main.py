@@ -52,7 +52,11 @@ def main():
             runner.train()
         except KeyboardInterrupt:
             logging.info('Training interrupted.')
-    runner.eval(epoch=args.epoch or exp.get_last_checkpoint_epoch(), on_val=True, save_predictions=args.save_predictions)
+    epoch = args.epoch or exp.get_last_checkpoint_epoch()
+    print(f"epoch: {epoch} Metrics on validation dataset:")
+    runner.eval(epoch=epoch, on_val=True, save_predictions=args.save_predictions)
+    print(f"epoch: {epoch} Metrics on test dataset:")
+    runner.eval(epoch=epoch, on_val=False, save_predictions=args.save_predictions)
 
 
 if __name__ == '__main__':

@@ -19,10 +19,10 @@ SPLIT_FILES = {
         "label_data_0531.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-18-14-17-05.json",
-        "label_llamas_images-2014-12-22-13-04-51_mapping_280N_2nd_lane.json",
         "label_llamas_images-2014-12-18-14-28-45.json",
-        "label_llamas_images-2014-12-22-14-01-36_mapping_280N_3rd_lane.json",
         "label_llamas_images-2014-12-18-14-43-48.json",
+        "label_llamas_images-2014-12-22-13-04-51_mapping_280N_2nd_lane.json",
+        "label_llamas_images-2014-12-22-14-01-36_mapping_280N_3rd_lane.json",
         "label_llamas_images-2014-12-22-12-02-45_mapping_280N_ramps.json",
         "label_llamas_images-2014-12-22-14-36-42_mapping_280N_4th_lane.json",
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
@@ -84,8 +84,12 @@ class TuSimple(LaneDatasetLoader):
             anno_prefix = "ol_training"
         elif split == "val":
             anno_prefix = "ol_validation"
+        elif split == "test":
+            anno_prefix = "ol_test"
         else:
-            raise Exception("Split `{}` does not exist.".format(split))
+            print(f"Split `{split}` does not exist.")
+            return
+            #    raise Exception("Split `{}` does not exist.".format(split))
         for anno_file in os.listdir(root_dir):
             if anno_file.endswith(".json") and anno_file.startswith(anno_prefix):
                 openlane_anno_files.append(os.path.join(root_dir, anno_file))

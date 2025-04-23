@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from scipy.interpolate import splprep, splev
 import shutil
+import random
 
 TUSIMPLE_IMG_RES = (720, 1280)
 
@@ -295,8 +296,25 @@ def test_convert_dataset_dir(split='validation'):
     print(f"first_subdir: {first_subdir}")
     draw_tusimple_label(new_label_filepath, 'datasets/TUSimple/tusimple', 'outputs/')
 
+
+def split_validation_dataset(split_rate=0.5):
+    old_label_dir = 'datasets/TUSimple/tusimple'
+    new_label_dir = 'datasets/TUSimple/tusimple-test'
+    for filename in os.listdir(old_label_dir):
+        if os.path.isfile(os.path.join(old_label_dir, filename)) \
+            and filename.endswith('.json') \
+            and filename.startswith('ol_validation'):
+            to_split = True if random.random() >= split_rate else False
+            if to_split:
+                old_label_filepath = os.path.join(old_label_dir, filename)
+                new_label_filepath = os.path.join(new_label_dir, filename.replace('ol_validation_', 'ol_test_'))
+                shutil.copy(old_label_filepath, new_label_filepath)
+                # remove old label
+                os.remove(old_label_filepath)
+
 if __name__ == '__main__':
     #test_convert_one_label()
     #test_convert_dir()
-    #test_convert_dataset_dir(split='validation')
+    test_convert_dataset_dir(split='validation')
     test_convert_dataset_dir(split='training')
+    split_validation_dataset(split_rate=0.5)

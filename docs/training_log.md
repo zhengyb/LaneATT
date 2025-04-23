@@ -13,6 +13,8 @@
 ` {'Accuracy': 0.6345005049328051, 'FP': 0.38824904839586644, 'FN': 0.6404839586731994, 'FPS': 1000.0}`
 - **可以看到，预训练模型的泛化效果并不好。误报和漏报率都很高。**
   
+**从这里开始混入LLAMAS数据**
+
 ## 1. 2025 April 17
 - 数据集： ==1/10采样LLAMAS + 1/1 采样TUSIMPLE，train数据集共11542图片；==
 - anchors文件： data/tusimple_anchors_freq.pt
@@ -136,7 +138,10 @@
 ` {'Accuracy': 0.7230097375913576, 'FP': 0.6622320389014393, 'FN': 0.6208136429011787, 'FPS': 1000.0}`
 - **分析：**
   - culane与tusimple相互之间的泛化性能都很差；tusimple是北美高速路场景；culane是北京城区场景；
+  - 暂时不混入culane数据集，需要再仔细思考。
 
+
+**从这里开始，改用F1 Score评价指标**
 
 ## 8. 2025 April 23 PM1
 - 数据集： 同上。
@@ -155,7 +160,7 @@
 
 
 ## 9. 2025 April 23 PM2
-- 数据集： 同上。
+- 数据集： 同上（**无openlane数据**）。
 - anchors文件： `data/tusimple_250418pm_anchors_mask.pt`
 - epochs: 40
 - 训练参数修改：lr_scheduler.T_max为40 * 925. 改用F1 Score度量性能
@@ -166,25 +171,30 @@
   ` {'F1': 0.9316309954686653, 'Precision': 0.9222479264232918, 'Recall': 0.9412069561211562, 'FPS': 1000.0, 'TP': 16345, 'FP': 1378, 'FN': 1021}`
 - 最优epoch（35）模型在混合了1/5 openlane的valid数据集的表现：  
 `{'F1': 0.5653014197576749, 'Precision': 0.4780914062991136, 'Recall': 0.6914264933175743, 'FPS': 1000.0, 'TP': 15210, 'FP': 16604, 'FN': 6788}`
-
 - **分析与总结**:
   - F1指标在训练过程中会波动；
   - 最后10个epochs性能基本稳定；
   - 在openlane上泛化性能不好；参考性能：[paperswithcode](https://paperswithcode.com/sota/lane-detection-on-openlane)上记录的2D最佳模型F1为63,3D模型为66.
 
 
+**从这里开始混入Openlane v1.x数据，1/5采样率**
+
 ## 10. 2025 April 23 PM3
-- 数据集： 1/5混合了openlane的training和validation数据集。数据集信息参考[openlanev1_dataset.md](openlanev1_dataset.md)的`20250423`记录。混合后，training数据集有39225, valid数据集有11133.
+- 数据集： 1/5混合了openlane的training和validation数据集。数据集信息参考[openlanev1_dataset.md](openlanev1_dataset.md)的`20250423`记录。混合后，training数据集有39225, valid数据集有7221, test数据集有8779.
 - anchors文件： 同上。
 - epochs: 20
 - 训练参数修改：lr_scheduler.T_max为20 * 4904. 改用F1 Score度量性能
 - 开始时间: 2025-04-23 18:20
-- 结束时间： TODO
-- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250423PM3.png)
-- 最优epoch（TODO）模型在test数据集的表现：
-  ``
-- 最优epoch（TODO）模型在混合了1/10 openlane的valid数据集的表现：  
-``
+- 结束时间： 2025-04-23 20:08
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250423PM3.png) **epoch 40是垃圾数据**
+- 最优epoch（15）模型在test数据集(only tusimple + llamas)的表现：
+  `{'F1': 0.9242215328047798, 'Precision': 0.9221024876762581, 'Recall': 0.926350339744328, 'FPS': 1000.0, 'TP': 16087, 'FP': 1359, 'FN': 1279} `
+- 最优epoch（15）模型在混合了1/10 openlane的valid数据集的表现：  
+`{'F1': 0.7929401077152682, 'Precision': 0.7563441303899319, 'Recall': 0.8332575688698972, 'FPS': 1000.0, 'TP': 18330, 'FP': 5905, 'FN': 3668}`
+- 将validation数据集拆分一半混入test数据集：
+`{'F1': 0.8637516914749663, 'Precision': 0.8445032455451276, 'Recall': 0.8838980483794193, 'FPS': 1000.0, 'TP': 20426, 'FP': 3761, 'FN': 2683}`
+- 在拆分后的validation数据集的性能:
+`{'F1': 0.8291208628403806, 'Precision': 0.7997599176860638, 'Recall': 0.8607197785296832, 'FPS': 1000.0, 'TP': 13991, 'FP': 3503, 'FN': 2264}`
 
 - **分析与总结**:
-  - TODO
+  - 综合训练后的模型在tusimple+llamas的test数据集上依然有超过92的F1分数；

@@ -7,7 +7,7 @@ Details of Openlane v1 lane annotation, refer to [here](https://github.com/OpenD
 - 1920 * 1280
 - 'attribute' might be wrong.
 - Lanes might be splited into two or more items due to the category. In our case, it is better to merge them. But how?
-
+- test数据集实际上包含在validation数据集中!!!
 
 ## Directoies
 TODO
