@@ -129,7 +129,8 @@ def main():
         for k in max_metrics.keys():
             if k == 'value' or k == 'epoch':
                 continue
-            max_metrics[k] = data[k]
+            k_cap = k.capitalize()
+            max_metrics[k] = data[k_cap]
 
     # 绘制图表
     if bench_type == "llamas":
