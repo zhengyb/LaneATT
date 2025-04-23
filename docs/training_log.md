@@ -104,3 +104,87 @@
     Average latency (ms): 1.17
     Average FPS: 853.69
     ```
+
+
+## 6. 2025 April 21 AM1
+- 数据集： 同上。
+- anchors文件： 仅基于train数据集生成。`data/tusimple_250418pm_anchors_mask.pt`
+- epochs: 20
+- 训练参数修改：lr_scheduler.T_max从100 * 454改为20 * 925
+- 开始时间: 2025-04-21 14:22
+- 结束时间： 2025-04-21 14:47
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250421am1.png)
+- 最优epoch（19）模型在test数据集的表现：
+  `{'Accuracy': 0.9565514103730626, 'FP': 0.0803883295664674, 'FN': 0.04018560372577228, 'FPS': 1000.0}`
+- 最优epoch（19）模型在valid数据集的表现：
+  ` {'Accuracy': 0.9611439641109293, 'FP': 0.06129418162044602, 'FN': 0.051169113648722155, 'FPS': 1000.0}`
+- **分析与总结**:
+  - 最优模型性能相当。
+
+## 7. 2025 April 21 AM2
+- 数据集: culane
+- anchors文件： 官方anchors文件
+- laneatt_r18_culane官方预训练模型在test数据集上的性能：
+`{'TP': 72067, 'FP': 15685, 'FN': 32819, 'Precision': 0.8212576351536147, 'Recall': 0.6870983734721507, 'F1': 0.7482116716328034}`
+- 上一个实验生成的epoch 19模型在culane test数据集上的性能(使用culane anchors)：
+`{'TP': 1284, 'FP': 1374, 'FN': 103602, 'Precision': 0.48306997742663654, 'Recall': 0.01224186259367313, 'F1': 0.02387859852711448}`
+- 上一个实验生成的epoch 19模型 + 'data/tusimple_250418pm_anchors_mask.pt'在culane test数据集上的性能:
+` {'TP': 7448, 'FP': 5717, 'FN': 97438, 'Precision': 0.5657424990505128, 'Recall': 0.07101043037202295, 'F1': 0.126182751522647}`
+- laneatt_r18_culane官方预训练模型+ 'data/tusimple_250418pm_anchors_mask.pt',在混合后的tusimple-test数据集上的性能：
+` {'Accuracy': 0.732033703660219, 'FP': 0.736877611122531, 'FN': 0.6548866515992149, 'FPS': 1000.0}`
+- laneatt_r18_culane官方预训练模型+ 'data/culane_anchors_freq.pt',在混合后的tusimple-test数据集上的性能：
+` {'Accuracy': 0.7230097375913576, 'FP': 0.6622320389014393, 'FN': 0.6208136429011787, 'FPS': 1000.0}`
+- **分析：**
+  - culane与tusimple相互之间的泛化性能都很差；tusimple是北美高速路场景；culane是北京城区场景；
+
+
+## 8. 2025 April 23 PM1
+- 数据集： 同上。
+- anchors文件： `data/tusimple_250418pm_anchors_mask.pt`
+- epochs: 20
+- 训练参数修改：lr_scheduler.T_max为20 * 925. 改用F1 Score度量性能
+- 开始时间: 2025-04-23 16:26
+- 结束时间： TODO
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250423pm1.png)
+- 最优epoch（TODO）模型在test数据集的表现：
+  `TODO`
+- 最优epoch（TODO）模型在valid数据集的表现：
+  ` TODO`
+- **分析与总结**:
+  - 采用F1评估，epoch20未收敛；
+
+
+## 9. 2025 April 23 PM2
+- 数据集： 同上。
+- anchors文件： `data/tusimple_250418pm_anchors_mask.pt`
+- epochs: 40
+- 训练参数修改：lr_scheduler.T_max为40 * 925. 改用F1 Score度量性能
+- 开始时间: TODO
+- 结束时间： TODO
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250423PM2.png)
+- 最优epoch（35）模型在test数据集的表现：
+  ` {'F1': 0.9316309954686653, 'Precision': 0.9222479264232918, 'Recall': 0.9412069561211562, 'FPS': 1000.0, 'TP': 16345, 'FP': 1378, 'FN': 1021}`
+- 最优epoch（35）模型在混合了1/5 openlane的valid数据集的表现：  
+`{'F1': 0.5653014197576749, 'Precision': 0.4780914062991136, 'Recall': 0.6914264933175743, 'FPS': 1000.0, 'TP': 15210, 'FP': 16604, 'FN': 6788}`
+
+- **分析与总结**:
+  - F1指标在训练过程中会波动；
+  - 最后10个epochs性能基本稳定；
+  - 在openlane上泛化性能不好；参考性能：[paperswithcode](https://paperswithcode.com/sota/lane-detection-on-openlane)上记录的2D最佳模型F1为63,3D模型为66.
+
+
+## 10. 2025 April 23 PM3
+- 数据集： 1/5混合了openlane的training和validation数据集。数据集信息参考[openlanev1_dataset.md](openlanev1_dataset.md)的`20250423`记录。混合后，training数据集有39225, valid数据集有11133.
+- anchors文件： 同上。
+- epochs: 20
+- 训练参数修改：lr_scheduler.T_max为20 * 4904. 改用F1 Score度量性能
+- 开始时间: 2025-04-23 18:20
+- 结束时间： TODO
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250423PM3.png)
+- 最优epoch（TODO）模型在test数据集的表现：
+  ``
+- 最优epoch（TODO）模型在混合了1/10 openlane的valid数据集的表现：  
+``
+
+- **分析与总结**:
+  - TODO
