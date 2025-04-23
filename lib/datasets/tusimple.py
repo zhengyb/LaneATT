@@ -65,6 +65,7 @@ class TuSimple(LaneDatasetLoader):
             raise Exception("Split `{}` does not exist.".format(split))
 
         self.anno_files = [os.path.join(self.root, path) for path in SPLIT_FILES[split]]
+        self.add_openlane_anno_files(self.root, split)
 
         if root is None:
             raise Exception("Please specify the root directory")
@@ -76,6 +77,19 @@ class TuSimple(LaneDatasetLoader):
         # Force max_lanes, used when evaluating testing with models trained on other datasets
         if max_lanes is not None:
             self.max_lanes = max_lanes
+
+    def add_openlane_anno_files(self, root_dir, split):
+        openlane_anno_files = []
+        if split == "train":
+            anno_prefix = "ol_training"
+        elif split == "val":
+            anno_prefix = "ol_validation"
+        else:
+            raise Exception("Split `{}` does not exist.".format(split))
+        for anno_file in os.listdir(root_dir):
+            if anno_file.endswith(".json") and anno_file.startswith(anno_prefix):
+                openlane_anno_files.append(os.path.join(root_dir, anno_file))
+        self.anno_files.extend(openlane_anno_files)
 
     def get_img_heigth(self, _):
         return 720
@@ -116,6 +130,14 @@ class TuSimple(LaneDatasetLoader):
                 data = json.loads(line)
                 y_samples = data["h_samples"]  # 1个image的y坐标
                 gt_lanes = data["lanes"]  # 1个image的gt_lanes
+
+                # 过滤掉没有gt_lanes的image
+                #if len(gt_lanes) == 0:
+                #    continue
+                # 过滤掉gt_lanes大于5条的image, openlane数据集的标注有问题???
+                if len(gt_lanes) > 5:
+                    continue
+
                 lanes = [
                     [(x, y) for (x, y) in zip(lane, y_samples) if x >= 0]
                     for lane in gt_lanes
