@@ -10,6 +10,7 @@ model:
     topk_anchors: 1000
     #anchors_freq_path: 'data/tusimple_anchors_freq.pt'
     anchors_freq_path: 'data/tusimple_250418pm_anchors_mask.pt'
+    #anchors_freq_path: 'data/culane_anchors_freq.pt'
     img_h: &img_h 360
     img_w: &img_w 640
 batch_size: 8
@@ -30,7 +31,10 @@ optimizer:
 lr_scheduler:
   name: CosineAnnealingLR
   parameters:
-    T_max: 45400 # 100 * 454 iterations
+    #T_max: 45400 # 100epochs * 454 iterations
+    #T_max: 18500 # 20 * 925 iterations
+    #T_max: 37000 # 40 * 925 iterations
+    T_max: 98080 # 20 * 4904 iterations
 
 # Dataset settings
 datasets:
