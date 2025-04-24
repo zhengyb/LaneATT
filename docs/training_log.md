@@ -195,6 +195,24 @@
 `{'F1': 0.8637516914749663, 'Precision': 0.8445032455451276, 'Recall': 0.8838980483794193, 'FPS': 1000.0, 'TP': 20426, 'FP': 3761, 'FN': 2683}`
 - 在拆分后的validation数据集的性能:
 `{'F1': 0.8291208628403806, 'Precision': 0.7997599176860638, 'Recall': 0.8607197785296832, 'FPS': 1000.0, 'TP': 13991, 'FP': 3503, 'FN': 2264}`
-
 - **分析与总结**:
   - 综合训练后的模型在tusimple+llamas的test数据集上依然有超过92的F1分数；
+
+
+## 11. 2025 April 23 PM4, 更新anchors后重新训练，观察Metrics变化；
+- 数据集： 同上。
+- anchors文件： 同上。
+- epochs: 20
+- 训练参数修改：lr_scheduler.T_max为20 * 4904. 改用F1 Score度量性能
+- 开始时间: 2025-04-24 00:52
+- 结束时间： TODO
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250423PM4.png) 
+- 最优epoch（15）模型在test数据集(only tusimple + llamas)的表现：
+  `TODO`
+- 最新test数据集：
+`TODO`
+- **分析与总结**:
+  - 从anchors mask的可视图上可以看到，底部anchors与前一个数据集有明显区别。底部中间的anchors被过滤掉，是否因为openlane的标注问题去除了变道过程的数据？？！！**这样训练的模型对于变道过程的识别准确率可能有影响！！！**
+  - 综合训练后的模型在tusimple+llamas的test数据集上的F1： TODO
+  - 
+## 12. 实验自有数据效果！
