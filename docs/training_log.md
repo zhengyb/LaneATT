@@ -201,18 +201,32 @@
 
 ## 11. 2025 April 23 PM4, 更新anchors后重新训练，观察Metrics变化；
 - 数据集： 同上。
-- anchors文件： 同上。
+- anchors文件： data/tusimple_250423_anchors_mask.pt
 - epochs: 20
 - 训练参数修改：lr_scheduler.T_max为20 * 4904. 改用F1 Score度量性能
 - 开始时间: 2025-04-24 00:52
-- 结束时间： TODO
+- 结束时间： 2025-04-24 02:35
 - 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250423PM4.png) 
 - 最优epoch（15）模型在test数据集(only tusimple + llamas)的表现：
-  `TODO`
+  `{'F1': 0.9216704878544272, 'Precision': 0.9290854835878533, 'Recall': 0.9143729125878153, 'FPS': 1000.0, 'TP': 15879, 'FP': 1212, 'FN': 1487}`
 - 最新test数据集：
-`TODO`
+`{'F1': 0.8533265595563176, 'Precision': 0.8352395159953588, 'Recall': 0.8722142888052274, 'FPS': 1000.0, 'TP': 20156, 'FP': 3976, 'FN': 2953}`
+- valid数据集：
+`{'F1': 0.8217295551314051, 'Precision': 0.7860674157303371, 'Recall': 0.8607812980621348, 'FPS': 1000.0, 'TP': 13992, 'FP': 3808, 'FN': 2263}`
 - **分析与总结**:
   - 从anchors mask的可视图上可以看到，底部anchors与前一个数据集有明显区别。底部中间的anchors被过滤掉，是否因为openlane的标注问题去除了变道过程的数据？？！！**这样训练的模型对于变道过程的识别准确率可能有影响！！！**
-  - 综合训练后的模型在tusimple+llamas的test数据集上的F1： TODO
+  - Metrics并没有明显变化。混合了openlane数据后，变道数据较少，在Metrics中影响较小。
+
+## 12. 用变更后的vaild数据集复现实验#10， 20250423PM5
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250423PM4.png) 
+- 最优epoch（15）模型在test数据集(only tusimple + llamas)的表现：
+  `{'F1': 0.9211286126754523, 'Precision': 0.9146182231053079, 'Recall': 0.9277323505700794, 'FPS': 1000.0, 'TP': 16111, 'FP': 1504, 'FN': 1255}`
+- 最新test数据集：
+` {'F1': 0.8609831513851203, 'Precision': 0.837671905697446, 'Recall': 0.885628975723744, 'FPS': 1000.0, 'TP': 20466, 'FP': 3966, 'FN': 2643}`
+- valid数据集：
+` {'F1': 0.8233634145624505, 'Precision': 0.7883922539968475, 'Recall': 0.8615810519840049, 'FPS': 1000.0, 'TP': 14005, 'FP': 3759, 'FN': 2250}`
+- **分析与总结**:
+  - 与实验11的结果进行对比分析，把openlane数据集加入anchors mask的统计范围内，并不能提升F1. 根据理论分析，对变道场景可能有不利影响。因此保持data/tusimple_250418pm_anchors_mask.pt.
   - 
+
 ## 12. 实验自有数据效果！

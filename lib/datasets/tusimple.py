@@ -2,7 +2,7 @@ import os
 import json
 import random
 import logging
-
+import pickle as pkl
 import numpy as np
 
 from utils.tusimple_metric import LaneEval
@@ -126,6 +126,16 @@ class TuSimple(LaneDatasetLoader):
     def load_annotations(self):
         self.logger.info("Loading TuSimple annotations...")
         self.annotations = []
+        # Waiting for the dataset to load is tedious, let's cache it
+        os.makedirs('anno_cache', exist_ok=True)
+        cache_path = 'anno_cache/tusimple_{}.pkl'.format(self.split)
+        if os.path.exists(cache_path):
+            with open(cache_path, 'rb') as cache_file:
+                self.annotations = pkl.load(cache_file)
+                self.max_lanes = max(len(anno['lanes']) for anno in self.annotations)
+                print(f"Loaded {len(self.annotations)} annotations from cached file {cache_path}, MAX. lanes {self.max_lanes}")
+                return
+                    
         max_lanes = 0
         for anno_file in self.anno_files:  # 遍历所有标签文件
             with open(anno_file, "r") as anno_obj:  # 打开标签文件
@@ -170,6 +180,8 @@ class TuSimple(LaneDatasetLoader):
             len(self.annotations),
             self.max_lanes,
         )
+        with open(cache_path, 'wb') as cache_file:
+            pkl.dump(self.annotations, cache_file)        
 
     def transform_annotations(self, transform):
         self.annotations = list(map(transform, self.annotations))
