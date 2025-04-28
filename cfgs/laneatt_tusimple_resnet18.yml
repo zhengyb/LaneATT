@@ -10,11 +10,11 @@ model:
     topk_anchors: 1000
     #anchors_freq_path: 'data/tusimple_anchors_freq.pt'
     anchors_freq_path: 'data/tusimple_250418pm_anchors_mask.pt'
-    #anchors_freq_path: 'data/culane_anchors_freq.pt'
+    #anchors_freq_path: 'data/tusimple_250423_anchors_mask.pt'
     img_h: &img_h 360
     img_w: &img_w 640
 batch_size: 8
-epochs: 20
+epochs: 240
 loss_parameters: {}
 train_parameters:
   conf_threshold:
@@ -34,8 +34,9 @@ lr_scheduler:
     #T_max: 45400 # 100epochs * 454 iterations
     #T_max: 18500 # 20 * 925 iterations
     #T_max: 37000 # 40 * 925 iterations
-    T_max: 98080 # 20 * 4904 iterations
-
+    #T_max: 98080 # 20 * 4904 iterations
+    #T_max: 432560  # 40 * 10814， 20250425PM1
+    T_max: 865120  # 80 * 10814, 20250426AM1
 # Dataset settings
 datasets:
   train: &train

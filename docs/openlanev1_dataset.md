@@ -51,7 +51,41 @@ Here, we only explain the data of 2D lanes.
     "file_path":                            <str> -- image path
 }
 ```
+## 场景
+- scene_count: 
+```JSON
+{
+  'Residential area houses': 339, 
+  'Suburbs': 323, 
+  'Urban': 290, 
+  'Highway': 36, 
+  'Parking lot / Exits': 12, 
+  'sum': 1000
+}
+```
+- 高速公路较少（与TUSimple， Llamas互补）
 
+- weather_count: 
+```JSON
+{
+  'Clear': 660, 
+  'Rainy': 125, 
+  'Overcast': 41, 
+  'Partly Cloudy': 159, 
+  'Foggy': 15, 
+  'sum': 1000
+}
+```
+
+- hours_count: 
+```JSON
+{
+  'Daytime': 820, 
+  'Dawn/Dusk': 70, 
+  'Night': 110, 
+  'sum': 1000
+}
+```
 
 ## Convertation
 ### 20250423

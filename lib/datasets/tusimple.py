@@ -52,11 +52,32 @@ SPLIT_FILES = {
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
         "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
     ],
+    "test_curve_case": [
+    ],
+    "test_extreme_weather_case": [
+    ],
+    "test_night_case": [
+    ],
+    "test_intersection_case": [
+    ],
+    "test_up_down_case": [
+    ],
+    "test_merge_split_case": [
+    ],
+    "test_highway_case": [
+        "test_label.json",
+        # convert from LLAMAS
+        "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
+        "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
+    ],    
+    
+    
 }
 
 
 class TuSimple(LaneDatasetLoader):
     def __init__(self, split="train", max_lanes=None, root=None):
+        self.name = 'tusimple'
         self.split = split
         self.root = root
         self.logger = logging.getLogger(__name__)
@@ -65,7 +86,14 @@ class TuSimple(LaneDatasetLoader):
             raise Exception("Split `{}` does not exist.".format(split))
 
         self.anno_files = [os.path.join(self.root, path) for path in SPLIT_FILES[split]]
-        self.add_openlane_anno_files(self.root, split)
+        if split in ['test', 'train', 'val']:
+            self.add_openlane_anno_files(self.root, split)
+        elif split in ['test_highway_case']:
+            pass
+        elif split in ['test_curve_case', 'test_extreme_weather_case', 
+                       'test_night_case', 'test_intersection_case', 
+                       'test_up_down_case', 'test_merge_split_case']:
+            self.get_scene_anno_files(self.root, split)
 
         if root is None:
             raise Exception("Please specify the root directory")
@@ -77,6 +105,10 @@ class TuSimple(LaneDatasetLoader):
         # Force max_lanes, used when evaluating testing with models trained on other datasets
         if max_lanes is not None:
             self.max_lanes = max_lanes
+
+    def get_scene_anno_files(self, root_dir, split):
+        scene_anno_filename = split.replace('test_', 'ol_scene_') + '.json'
+        self.anno_files = [os.path.join(root_dir, scene_anno_filename)]
 
     def add_openlane_anno_files(self, root_dir, split):
         openlane_anno_files = []

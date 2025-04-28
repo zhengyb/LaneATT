@@ -53,8 +53,8 @@ def main():
         except KeyboardInterrupt:
             logging.info('Training interrupted.')
     epoch = args.epoch or exp.get_last_checkpoint_epoch()
-    print(f"epoch: {epoch} Metrics on validation dataset:")
-    runner.eval(epoch=epoch, on_val=True, save_predictions=args.save_predictions)
+    #print(f"epoch: {epoch} Metrics on validation dataset:")
+    #runner.eval(epoch=epoch, on_val=True, save_predictions=args.save_predictions)
     print(f"epoch: {epoch} Metrics on test dataset:")
     runner.eval(epoch=epoch, on_val=False, save_predictions=args.save_predictions)
 

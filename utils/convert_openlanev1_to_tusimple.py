@@ -41,6 +41,9 @@ def get_cut_h(old_img_shape=(1280, 1920)):
     return cut_h
 
 def convert_image_one(openlane_img_path, tusimple_img_path):
+    """
+    Convert Openlane V1.x image to Tusimple image
+    """
     # Read Openlane V1.x image
     openlane_img = cv2.imread(openlane_img_path)
     img_h, img_w = openlane_img.shape[:2]
@@ -149,6 +152,9 @@ def convert_lane_one(lane_uv, old_img_shape=(1280, 1920), h_samples=list(range(1
 
 def convert_label_one(openlane_label_path, openlane_img_path, tusimple_img_path, tusimple_label_path=None, 
                       h_samples=list(range(160, 720, 10)), with_old_lane=False, only_4_lanes=True):
+    """
+    Convert Openlane V1.x label to Tusimple label
+    """
     img_h, img_w = cv2.imread(openlane_img_path).shape[:2]
     raw_file = tusimple_img_path.split('/')[3:]
     raw_file = '/'.join(raw_file)
@@ -182,7 +188,7 @@ def convert_label_one(openlane_label_path, openlane_img_path, tusimple_img_path,
 
 
 def convert_dir(old_img_dir, old_label_dir, new_img_dir_parent_path, new_label_dir_parent_path, split_name='valid', 
-                sample_interval=5, convert_img=True):
+                sample_interval=5, convert_img=True, force_convert_img=False):
     this_dir_name = old_img_dir.split('/')[-1]
     new_img_dir_path = os.path.join(new_img_dir_parent_path, 'ol_' + this_dir_name)
     os.makedirs(new_img_dir_path, exist_ok=True)
@@ -202,7 +208,8 @@ def convert_dir(old_img_dir, old_label_dir, new_img_dir_parent_path, new_label_d
                 old_label_path = os.path.join(old_label_dir, label_filename)
                 new_img_path = os.path.join(new_img_dir_path, label_filename.replace('.json', '.jpg'))
                 if convert_img:
-                    convert_image_one(old_img_path, new_img_path)
+                    if (not os.path.exists(new_img_path)) or force_convert_img:
+                        convert_image_one(old_img_path, new_img_path)
                 label = convert_label_one(old_label_path, old_img_path, new_img_path)
                 json.dump(label, f)
                 f.write('\n')
@@ -273,6 +280,7 @@ def test_convert_one_label():
     # draw image
     draw_image(new_img, new_label, os.path.join(new_path, ret_filename))
 
+
 def test_convert_dir():
     old_img_dir = 'datasets/openlane/images/validation/segment-3039251927598134881_1240_610_1260_610_with_camera_labels'
     old_label_dir = 'datasets/openlane/validation/segment-3039251927598134881_1240_610_1260_610_with_camera_labels'
@@ -282,7 +290,7 @@ def test_convert_dir():
     draw_tusimple_label(new_label_filepath, 'datasets/TUSimple/tusimple', 'outputs/')
 
 
-def test_convert_dataset_dir(split='validation'):
+def test_convert_dataset_dir(split='validation', sample_interval=5):
     old_dataset_label_dir = 'datasets/openlane/%s' % split
     old_dataset_img_dir = 'datasets/openlane/images/%s' % split
     if split == 'training' or split == 'validation':
@@ -292,6 +300,7 @@ def test_convert_dataset_dir(split='validation'):
     first_subdir, new_label_filepath = convert_dataset_dir(split=split, old_dataset_label_dir=old_dataset_label_dir, 
                                                            old_dataset_img_dir=old_dataset_img_dir, 
                                                            new_dataset_dir=new_dataset_dir,
+                                                           sample_interval=sample_interval,
                                                            convert_img=True)
     print(f"first_subdir: {first_subdir}")
     draw_tusimple_label(new_label_filepath, 'datasets/TUSimple/tusimple', 'outputs/')
@@ -312,9 +321,60 @@ def split_validation_dataset(split_rate=0.5):
                 # remove old label
                 os.remove(old_label_filepath)
 
+def convert_openlanev1_test_dataset(test_dir, output_dir, convert_img=True, force_convert_img=False):
+    # test_dir: datasets/openlane/test
+    # output_img_dir: datasets/TUSimple/tusimple-test/images
+    # output_label_dir: datasets/TUSimple/tusimple-test/labels
+
+    img_dir_root = test_dir.replace('/test', '/images/')
+    print(f"img_dir_root: {img_dir_root}")
+
+    output_img_dir = os.path.join(output_dir, 'clips', 'openlane')
+
+    # 遍历test_dir中的所有子目录
+    for node in os.listdir(test_dir):
+        node_path = os.path.join(test_dir, node)
+        if os.path.isfile(node_path) and node.endswith('.txt'):
+            # scene
+            scene_id = node.split('.')[0].split('_')[1:]
+            scene_id.append("case")
+            scene_anno_dir = "_".join(scene_id)
+            tusimple_scene_anno_path = os.path.join(output_dir, 'ol_scene_' + scene_anno_dir + '.json')
+            scene_cnt = 0
+            print(f"Processing {scene_anno_dir}...")
+            with open(tusimple_scene_anno_path, 'w') as fo:
+                with open(node_path, 'r') as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        line = line.strip()
+                        if len(line) == 0:
+                            continue
+                        assert line.startswith('validation/')
+                        assert line.endswith('.jpg')
+                        old_img_path = os.path.join(img_dir_root, line)
+                        #print(f"old_img_path: {old_img_path}")
+                        old_anno_path = line.replace('validation/', f'{scene_anno_dir}/').replace('.jpg', '.json')
+                        old_anno_path = os.path.join(test_dir, old_anno_path)
+                        #print(f"old_anno_path: {old_anno_path}")
+                        assert os.path.exists(old_anno_path)
+                        assert os.path.exists(old_img_path)
+                        
+                        new_img_path = os.path.join(output_img_dir, line.replace('validation/segment-', 'ol_segment-'))
+                        if convert_img:
+                            if (not os.path.exists(new_img_path)) or force_convert_img:
+                                convert_image_one(old_img_path, new_img_path)
+                        assert os.path.exists(new_img_path)
+                        label = convert_label_one(old_anno_path, old_img_path, new_img_path)
+                        json.dump(label, fo)
+                        fo.write('\n')
+                        scene_cnt += 1
+            print(f"Done. {scene_cnt} annotations processed.")
+                    
+
 if __name__ == '__main__':
     #test_convert_one_label()
     #test_convert_dir()
-    test_convert_dataset_dir(split='validation')
-    test_convert_dataset_dir(split='training')
-    split_validation_dataset(split_rate=0.5)
+    #test_convert_dataset_dir(split='validation', sample_interval=2)
+    #test_convert_dataset_dir(split='training', sample_interval=2)
+    #split_validation_dataset(split_rate=0.5)
+    convert_openlanev1_test_dataset('datasets/openlane/test', 'datasets/TUSimple/tusimple-test')

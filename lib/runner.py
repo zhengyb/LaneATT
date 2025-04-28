@@ -7,6 +7,7 @@ import torch
 import numpy as np
 from tqdm import tqdm, trange
 import shutil
+import json
 
 
 class Runner:
@@ -73,7 +74,35 @@ class Runner:
                 self.eval(epoch, on_val=True)
         self.exp.train_end_callback()
 
+    def eval_scene(self, epoch, save_predictions=False):
+        scene_list = [
+            'test_curve_case',
+            'test_extreme_weather_case',
+            'test_night_case',
+            'test_intersection_case',
+            'test_up_down_case',
+            'test_merge_split_case',
+            'test_highway_case',
+        ]
+        all_metrics = {}
+        for scene_name in scene_list:
+            self.cfg['datasets']['test']['parameters']['split'] = scene_name
+            print(f"Evaling on '{scene_name}'.........")
+            metrics = self._eval(epoch, on_val=False, save_predictions=save_predictions)
+            all_metrics[scene_name] = metrics
+        return all_metrics
+
     def eval(self, epoch, on_val=False, save_predictions=False):
+        print("Evaling on '%s' dataset........." % ("val" if on_val else "test"))
+        metrics = self._eval(epoch, on_val=on_val, save_predictions=save_predictions)
+        if not on_val:
+            all_metrics = {}
+            all_metrics['test'] = metrics
+            metrics = self.eval_scene(epoch, save_predictions=save_predictions)
+            all_metrics.update(metrics)
+            print(f"All Metrics: {json.dumps(all_metrics, indent=4)}")
+
+    def _eval(self, epoch, on_val=False, save_predictions=False):
         model = self.cfg.get_model()
         model_path = self.exp.get_checkpoint_path(epoch)
         self.logger.info('Loading model %s', model_path)
@@ -129,7 +158,8 @@ class Runner:
         if save_predictions:
             with open('predictions.pkl', 'wb') as handle:
                 pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        self.exp.eval_end_callback(dataloader.dataset.dataset, predictions, epoch)
+        metrics =  self.exp.eval_end_callback(dataloader.dataset.dataset, predictions, epoch)
+        return metrics
 
     def get_train_dataloader(self):
         train_dataset = self.cfg.get_dataset('train')
@@ -158,6 +188,11 @@ class Runner:
                                                  worker_init_fn=self._worker_init_fn_)
         return val_loader
 
+    def get_scene_test_dataloader(self, scene_name):
+        self.cfg['datasets']['test']['parameters']['split'] = scene_name
+        test_loader = self.get_test_dataloader()
+        return test_loader
+    
     @staticmethod
     def _worker_init_fn_(_):
         torch_seed = torch.initial_seed()

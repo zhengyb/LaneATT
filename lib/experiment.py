@@ -130,6 +130,7 @@ class Experiment:
         metrics = self.save_epoch_results(dataset, predictions, epoch_evaluated)
         self.logger.debug('Testing session finished on model after epoch %d.', epoch_evaluated)
         self.logger.info('Results:\n %s', str(metrics))
+        return metrics
 
     def save_epoch_results(self, dataset, predictions, epoch):
         # setup dirs
