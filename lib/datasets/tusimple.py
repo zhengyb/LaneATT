@@ -148,7 +148,9 @@ class TuSimple(LaneDatasetLoader):
         lanes = []
         for lane in pred:
             xs = lane(ys)  # 采样点归一化的x坐标
-            invalid_mask = xs < 0  # 背景点mask
+            # xs > 1 is added by Reuben.
+            # invalid_mask = (xs < 0) | (xs > 1)  # 背景点mask
+            invalid_mask = (xs < 0)
             lane = (xs * self.get_img_width(path)).astype(int)  # 反归一化到图像像素坐标
             lane[invalid_mask] = -2  # 背景点赋值为-2
             lanes.append(lane.tolist())

@@ -70,8 +70,13 @@ def interpolate_lane(points, n=50):
     u = np.linspace(0., 1., n) # 生成50个均匀分布的点，归一化
     return np.array(splev(u, tck)).T # 插值，并转换成(n, 2)的形状
 
-def convert_lane_one(lane_uv, old_img_shape=(1280, 1920), h_samples=list(range(160, 720, 10))):
+def convert_lane_one(lane_uv, old_img_shape=(1280, 1920), h_samples=list(range(160, 720, 10)), debug=False):
+    if debug:
+        print(f"New lane....")
     tusimple_h, tusimple_w = TUSIMPLE_IMG_RES
+    if debug:
+        print(f"len of lane_uv: {len(lane_uv)}")
+    assert len(lane_uv) == 2, f"lane_uv must be a list of two lists"
     lane_uv = np.array(lane_uv)
     img_h, img_w = old_img_shape
     resized_h = int(round((tusimple_w * img_h) / img_w))
@@ -80,28 +85,51 @@ def convert_lane_one(lane_uv, old_img_shape=(1280, 1920), h_samples=list(range(1
     for u, v in zip(lane_uv[0], lane_uv[1]):
         lane_points.append([(u * tusimple_w / old_img_shape[1]), 
                             int(round(v * resized_h / old_img_shape[0]))])
+    if len(lane_points) < 2:
+        print(f"invalid original lane_points number: {len(lane_points)}, lane_uv: {lane_uv}")
+        return []        
     # remove cutted points
     cut_h = get_cut_h(old_img_shape=old_img_shape)
     #print(f"cut_h: {cut_h}")
     lane_points = [[p[0], p[1] - cut_h] for p in lane_points if p[1] > cut_h]
+    assert len(lane_points) > 1, f"bad lane points number after cut: {len(lane_points)}, lane_uv: {lane_uv}"
+    if debug:
+        print("After resize and cut:")
+        print(f"lane_points: {lane_points}")
     # sort lane points by v value
-    lane_points = sorted(lane_points, key=lambda x: x[1])
-    # 按v值分组并计算u坐标平均值
-    v_groups = {}
-    for point in lane_points:
-        v = point[1]
-        if v not in v_groups:
-            v_groups[v] = []
-        v_groups[v].append(point[0])  # 收集相同v值的所有u坐标
+    #lane_points = sorted(lane_points, key=lambda x: x[1])
+    # v is decreasing now
+    # remove duplicate v points
+    new_lane_points = [lane_points[0]]
+    for i in range(1, len(lane_points)):
+        if lane_points[i][1] != lane_points[i-1][1]:
+            new_lane_points.append(lane_points[i])
+    lane_points = new_lane_points
+    if debug:
+        print("After remove duplicate v points:")
+        print(f"lane_points: {lane_points}")
+    if False:
+        # 按v值分组并计算u坐标平均值
+        v_groups = {}
+        for point in lane_points:
+            v = point[1]
+            if v not in v_groups:
+                v_groups[v] = []
+            v_groups[v].append(point[0])  # 收集相同v值的所有u坐标
     
-    # 生成新的车道点列表（每个v值保留一个平均后的点）
-    lane_points = [
-        [sum(us) / len(us), v]  # 计算u坐标平均值
-        for v, us in sorted(v_groups.items(), key=lambda x: x[0])  # 按v值排序
-    ]
+        # 生成新的车道点列表（每个v值保留一个平均后的点）
+        lane_points = [
+            [sum(us) / len(us), v]  # 计算u坐标平均值
+            for v, us in sorted(v_groups.items(), key=lambda x: x[0])  # 按v值排序
+        ]
     if len(lane_points) < 2:
         print(f"invalid lane_points: {len(lane_points)}")
         return []
+    # sort lane points by v value
+    lane_points = sorted(lane_points, key=lambda x: x[1])    
+    if debug:
+        print("After sort by v value:")
+        print(f"lane_points: {lane_points}")
     #new_lane_points = [[int(p[0]), int(p[1])] for p in lane_points if p[0] >= 0]
     #return new_lane_points
     ys = range(0, 720, 1)
@@ -111,8 +139,15 @@ def convert_lane_one(lane_uv, old_img_shape=(1280, 1920), h_samples=list(range(1
     # fill with lane_points
     for point in lane_points:
         new_lane_points[point[1]] = [point[0], point[1]]
+        if debug:
+            print(f"new_lane_points[{point[1]}]: {new_lane_points[point[1]]}")
     y_start = lane_points[0][1]
     y_end = lane_points[-1][1]
+    if debug:
+        print(f"y_start: {y_start}, y_end: {y_end}")
+    if y_end - y_start < 20:
+        print(f"Too short lane: {y_end - y_start} pixels height, {y_start} -> {y_end}")
+        return []
     last_point = None
     next_point = None
 
@@ -136,7 +171,8 @@ def convert_lane_one(lane_uv, old_img_shape=(1280, 1920), h_samples=list(range(1
         if last_point is not None and next_point is not None:
             new_x = last_point[0] + (next_point[0] - last_point[0]) * (y - last_point[1]) / (next_point[1] - last_point[1])
             new_lane_points[y] = [new_x, y]
-            #print(f"interpolate ({new_x},{y}) between ({last_point[0]},{last_point[1]}) and ({next_point[0]},{next_point[1]})")
+            if debug:
+                print(f"interpolate ({new_x},{y}) between ({last_point[0]},{last_point[1]}) -> ({next_point[0]},{next_point[1]})")
         else:
             print(f"no next point found for {y}")
             raise ValueError(f"no next point found for {y}")
@@ -144,14 +180,14 @@ def convert_lane_one(lane_uv, old_img_shape=(1280, 1920), h_samples=list(range(1
     new_lane_points = [[int(round(p[0])), int(round(p[1]))] for p in new_lane_points]
     #new_lane_points = np.array(new_lane_points)
     tusimple_lane = [new_lane_points[h_samples[i]][0] for i in range(len(h_samples)) ]
-    valid_tusimple_lane = [x for x in tusimple_lane if x >= 0]
+    valid_tusimple_lane = [[tusimple_lane[i], h_samples[i]] for i in range(len(h_samples)) if tusimple_lane[i] > 0]
     if len(valid_tusimple_lane) < 2:
-        print(f"invalid tusimple lane: {len(valid_tusimple_lane)}")
+        print(f"invalid tusimple lane points number: {valid_tusimple_lane}; lane_points: {lane_points}")
         return []
     return tusimple_lane
 
 def convert_label_one(openlane_label_path, openlane_img_path, tusimple_img_path, tusimple_label_path=None, 
-                      h_samples=list(range(160, 720, 10)), with_old_lane=False, only_4_lanes=True):
+                      h_samples=list(range(160, 720, 10)), with_old_lane=False, only_4_lanes=True, debug=False):
     """
     Convert Openlane V1.x label to Tusimple label
     """
@@ -168,14 +204,44 @@ def convert_label_one(openlane_label_path, openlane_img_path, tusimple_img_path,
         old_label = json.load(f)
 
     if only_4_lanes:
-        old_lanes = [lane['uv'] for lane in old_label['lane_lines'] if lane['attribute'] > 0 and lane['attribute'] < 5]
+        old_lanes = [[[], []], # lane 1
+                     [[], []], 
+                     [[], []], 
+                     [[], []]]
+        for lane in old_label['lane_lines']:
+            if lane['attribute'] > 0 and lane['attribute'] < 5:
+                old_lanes[lane['attribute'] - 1][0].extend(lane['uv'][0])
+                old_lanes[lane['attribute'] - 1][1].extend(lane['uv'][1])
+                if debug:
+                    print(f"old_lanes[{lane['attribute'] - 1}]: {old_lanes[lane['attribute'] - 1]}")
+
+        # fill with curbside lane: left-20, right-21
+        for lane in old_label['lane_lines']:
+            to_fill = -1
+            if lane['category'] == 20 and lane['attribute'] == 0: # left curbside lane
+                if len(old_lanes[1][0]) == 0:
+                    to_fill = 1
+                elif len(old_lanes[0][0]) == 0:
+                    to_fill = 0
+            elif lane['category'] == 21 and lane['attribute'] == 0: # right curbside lane
+                if len(old_lanes[2][0]) == 0:
+                    to_fill = 2
+                elif len(old_lanes[3][0]) == 0:
+                    to_fill = 3
+            if to_fill >= 0:
+                old_lanes[to_fill][0].extend(lane['uv'][0])
+                old_lanes[to_fill][1].extend(lane['uv'][1])
+        if len(old_lanes) > 4:
+            raise ValueError(f"only_4_lanes is True, but the number of lanes is not 4: {len(old_lanes)}")
     else:
         old_lanes = [lane['uv'] for lane in old_label['lane_lines']]
     if with_old_lane:
         tusimple_label['old_lanes'] = old_lanes
     tusimple_lanes = []
     for lane in old_lanes:
-        new_lane = convert_lane_one(lane)
+        if len(lane[0]) == 0 or len(lane[1]) == 0:
+            continue
+        new_lane = convert_lane_one(lane, debug=debug)
         if len(new_lane) > 0:
             tusimple_lanes.append(new_lane)
     tusimple_label['lanes'] = tusimple_lanes
@@ -185,6 +251,7 @@ def convert_label_one(openlane_label_path, openlane_img_path, tusimple_img_path,
         with open(tusimple_label_path, 'w') as f:
             json.dump(tusimple_label, f)
     return tusimple_label
+
 
 
 def convert_dir(old_img_dir, old_label_dir, new_img_dir_parent_path, new_label_dir_parent_path, split_name='valid', 
@@ -197,6 +264,7 @@ def convert_dir(old_img_dir, old_label_dir, new_img_dir_parent_path, new_label_d
     
     print(f"Processing {old_img_dir}")
     image_cnt = 0
+    exceed_cnt = 0
     with open(new_label_filepath, 'w') as f:
         for label_filename in os.listdir(old_label_dir):
             if label_filename.endswith('.json'):
@@ -210,12 +278,17 @@ def convert_dir(old_img_dir, old_label_dir, new_img_dir_parent_path, new_label_d
                 if convert_img:
                     if (not os.path.exists(new_img_path)) or force_convert_img:
                         convert_image_one(old_img_path, new_img_path)
-                label = convert_label_one(old_label_path, old_img_path, new_img_path)
-                json.dump(label, f)
-                f.write('\n')
+                try:
+                    label = convert_label_one(old_label_path, old_img_path, new_img_path)
+                    json.dump(label, f)
+                    f.write('\n')
+                except ValueError as e:
+                    print(f"error converting label: {e}")
+                    exceed_cnt += 1
+                    continue
                 image_cnt += 1
-    print(f"Processed {image_cnt}/{sample_interval} images")
-    return new_label_filepath
+    print(f"Processed {image_cnt}/{sample_interval}, exceed {exceed_cnt} images")
+    return new_label_filepath, exceed_cnt
 
 def get_tusimple_label_filename(subdir, split_name):
     return 'ol_' + split_name + '_' + subdir + '.json'
@@ -225,16 +298,21 @@ def convert_dataset_dir(split, old_dataset_label_dir, old_dataset_img_dir, new_d
     first_subdir = None
     first_tusimple_label_filename = None
     new_img_base_dir = os.path.join(new_dataset_dir, 'clips', 'openlane')
+    total_exceed_cnt = 0
     for subdir in os.listdir(old_dataset_label_dir):
         if os.path.isdir(os.path.join(old_dataset_label_dir, subdir)):
             old_img_dir = os.path.join(old_dataset_img_dir, subdir)
             old_label_dir = os.path.join(old_dataset_label_dir, subdir)
-            label_filepath = convert_dir(old_img_dir, old_label_dir, new_img_base_dir, 
+            label_filepath, exceed_cnt = convert_dir(old_img_dir, old_label_dir, new_img_base_dir, 
                                          new_dataset_dir, split_name=split, sample_interval=sample_interval, 
                                          convert_img=convert_img) 
+            total_exceed_cnt += exceed_cnt
+
+            draw_tusimple_label(label_filepath, new_dataset_dir, f'{split}_labeled/')
             if first_subdir is None:
                 first_subdir = subdir
                 first_tusimple_label_filename = label_filepath
+    print(f"total exceed {total_exceed_cnt} images")
     return first_subdir, first_tusimple_label_filename
 
 def draw_image(new_img, new_label, output_path):
@@ -248,8 +326,8 @@ def draw_image(new_img, new_label, output_path):
     cv2.imwrite(output_path, new_img)
 
 def draw_tusimple_label(label_filepath, image_root, output_path):
-    if os.path.exists(output_path):
-        shutil.rmtree(output_path)
+    #if os.path.exists(output_path):
+    #    shutil.rmtree(output_path)
     with open(label_filepath, 'r') as f:
         lines = f.readlines()
         for line in lines:
@@ -262,11 +340,11 @@ def draw_tusimple_label(label_filepath, image_root, output_path):
             draw_image(img, label, out_img_path)
             
 def test_convert_one_label():
-    old_path = './datasets/openlane/images/training/segment-15832924468527961_1564_160_1584_160_with_camera_labels'
-    old_label_path = './datasets/openlane/training/segment-15832924468527961_1564_160_1584_160_with_camera_labels'
+    old_path = 'datasets/openlane/images/validation/segment-1457696187335927618_595_027_615_027_with_camera_labels'
+    old_label_path = 'datasets/openlane/validation/segment-1457696187335927618_595_027_615_027_with_camera_labels'
     new_path = './'
     #filename = '150767882687643500.jpg'
-    filename = '150767882727675700.jpg'
+    filename = '152090283481152900.jpg'
     label_filename = filename.replace('.jpg', '.json')
     ret_filename = filename.replace('.jpg', '_ret.jpg')
 
@@ -276,9 +354,12 @@ def test_convert_one_label():
     new_label = convert_label_one(os.path.join(old_label_path, label_filename),                                    
                       os.path.join(old_path, filename), 
                       os.path.join(new_path, filename),
-                      os.path.join(new_path, label_filename),)
+                      os.path.join(new_path, label_filename),
+                      debug=True)
     # draw image
-    draw_image(new_img, new_label, os.path.join(new_path, ret_filename))
+    output_path = os.path.join(new_path, ret_filename)
+    draw_image(new_img, new_label, output_path)
+    print(f"Done. Output image saved to {output_path}")
 
 
 def test_convert_dir():
@@ -290,25 +371,30 @@ def test_convert_dir():
     draw_tusimple_label(new_label_filepath, 'datasets/TUSimple/tusimple', 'outputs/')
 
 
-def test_convert_dataset_dir(split='validation', sample_interval=5):
+def test_convert_dataset_dir(split='validation', sample_interval=5, convert_img=True):
     old_dataset_label_dir = 'datasets/openlane/%s' % split
     old_dataset_img_dir = 'datasets/openlane/images/%s' % split
     if split == 'training' or split == 'validation':
         new_dataset_dir = 'datasets/TUSimple/tusimple'
+        #new_dataset_dir = 'datasets/TUSimple/tusimple-val'
     else:
         raise ValueError(f"invalid split: {split}")
     first_subdir, new_label_filepath = convert_dataset_dir(split=split, old_dataset_label_dir=old_dataset_label_dir, 
                                                            old_dataset_img_dir=old_dataset_img_dir, 
                                                            new_dataset_dir=new_dataset_dir,
                                                            sample_interval=sample_interval,
-                                                           convert_img=True)
+                                                           convert_img=convert_img)
     print(f"first_subdir: {first_subdir}")
-    draw_tusimple_label(new_label_filepath, 'datasets/TUSimple/tusimple', 'outputs/')
+    #draw_tusimple_label(new_label_filepath, new_dataset_dir, f'{split}_labeled/')
 
 
 def split_validation_dataset(split_rate=0.5):
     old_label_dir = 'datasets/TUSimple/tusimple'
     new_label_dir = 'datasets/TUSimple/tusimple-test'
+    # remove old label
+    rm_cmd = "rm -f %s/ol_test_*.json" % new_label_dir
+    os.system(rm_cmd)
+    split_cnt = 0
     for filename in os.listdir(old_label_dir):
         if os.path.isfile(os.path.join(old_label_dir, filename)) \
             and filename.endswith('.json') \
@@ -317,9 +403,14 @@ def split_validation_dataset(split_rate=0.5):
             if to_split:
                 old_label_filepath = os.path.join(old_label_dir, filename)
                 new_label_filepath = os.path.join(new_label_dir, filename.replace('ol_validation_', 'ol_test_'))
+                if os.path.exists(new_label_filepath):
+                    os.remove(new_label_filepath)
                 shutil.copy(old_label_filepath, new_label_filepath)
                 # remove old label
                 os.remove(old_label_filepath)
+                split_cnt += 1
+                print(f"{filename} split to test labels")
+    print(f"Done. {split_cnt} validation labels split to test labels")
 
 def convert_openlanev1_test_dataset(test_dir, output_dir, convert_img=True, force_convert_img=False):
     # test_dir: datasets/openlane/test
@@ -373,8 +464,8 @@ def convert_openlanev1_test_dataset(test_dir, output_dir, convert_img=True, forc
 
 if __name__ == '__main__':
     #test_convert_one_label()
+    #test_convert_dataset_dir(split='validation', sample_interval=2, convert_img=True)
     #test_convert_dir()
-    #test_convert_dataset_dir(split='validation', sample_interval=2)
-    #test_convert_dataset_dir(split='training', sample_interval=2)
     #split_validation_dataset(split_rate=0.5)
-    convert_openlanev1_test_dataset('datasets/openlane/test', 'datasets/TUSimple/tusimple-test')
+    #convert_openlanev1_test_dataset('datasets/openlane/test', 'datasets/TUSimple/tusimple-test')
+    test_convert_dataset_dir(split='training', sample_interval=2, convert_img=True)

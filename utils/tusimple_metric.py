@@ -6,7 +6,7 @@ from functools import partial
 
 from p_tqdm import t_map, p_map
 from scipy.optimize import linear_sum_assignment
-from utils.llamas_metric import discrete_cross_iou, continuous_cross_iou
+from utils.llamas_metric import discrete_cross_iou, continuous_cross_iou, interpolate_lane
 
 TUSIMPLE_IMG_RES = (720, 1280)
 
@@ -18,14 +18,15 @@ def _culane_metric(pred, anno, width=30, iou_threshold=0.5, unofficial=False, im
     if len(anno) == 0:
         return 0, len(pred), 0
         
-    #interp_pred = np.array([interpolate_lane(pred_lane, n=50) for pred_lane in pred])  # (4, 50, 2)
-    pred = np.array([np.array(pred_lane) for pred_lane in pred], dtype=object)
+    #print(f"pred length: {len(pred)}")
+    interp_pred = np.array([interpolate_lane(pred_lane, n=50) for pred_lane in pred])  # (4, 50, 2)
+    #pred = np.array([np.array(pred_lane) for pred_lane in pred], dtype=object)
     anno = np.array([np.array(anno_lane) for anno_lane in anno], dtype=object)
 
     if unofficial:
-        ious = continuous_cross_iou(pred, anno, width=width, img_shape=img_shape)
+        ious = continuous_cross_iou(interp_pred, anno, width=width, img_shape=img_shape)
     else:
-        ious = discrete_cross_iou(pred, anno, width=width, img_shape=img_shape)
+        ious = discrete_cross_iou(interp_pred, anno, width=width, img_shape=img_shape)
 
     row_ind, col_ind = linear_sum_assignment(1 - ious)
     tp = int((ious[row_ind, col_ind] > iou_threshold).sum())
@@ -176,10 +177,14 @@ class LaneEval(object):
             iou_gt_lanes = []
             for lane in gt_lanes:
                 lane_ious = [(x, y) for x, y in zip(lane, y_samples) if x >= 0]
+                if len(lane_ious) < 2:
+                    continue
                 iou_gt_lanes.append(lane_ious)
             iou_pred_lanes = []
             for lane in pred_lanes:
                 lane_ious = [(x, y) for x, y in zip(lane, y_samples) if x >= 0]
+                if len(lane_ious) < 2:
+                    continue
                 iou_pred_lanes.append(lane_ious)
             predictions.append(iou_pred_lanes)
             annotations.append(iou_gt_lanes)
