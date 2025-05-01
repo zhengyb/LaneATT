@@ -137,6 +137,9 @@ class Runner:
                     # 0~1 -> 0~255
                     for i in range(len(prediction)):
                         img_idx = (idx*8)+i
+                        if img_idx >= len(dataloader.dataset.annotations):
+                            # if the batch size > 1, the img_idx may be out of range
+                            break
                         img_path = dataloader.dataset.annotations[img_idx]['path']
 
                         #print(f"img_idx: {img_idx}, img_path: {img_path}")
