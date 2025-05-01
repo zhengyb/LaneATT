@@ -126,35 +126,49 @@ class Runner:
         self.exp.eval_start_callback(self.cfg)
         with torch.no_grad():
             for idx, (images, _, _) in enumerate(tqdm(dataloader)):
+
                 images = images.to(self.device)
                 output = model(images, **test_parameters)
                 prediction = model.decode(output, as_lanes=True)
                 predictions.extend(prediction)
                 if self.view:
+                #if False:
                     # (B, C, H, W) -> (H, W, C)
                     # 0~1 -> 0~255
-                    img = (images[0].cpu().permute(1, 2, 0).numpy() * 255).astype(np.uint8)
-                    img, fp, fn = dataloader.dataset.draw_annotation(idx, img=img, pred=prediction[0])
-                    #print(f"img: {idx} | fp: {fp} | fn: {fn}")
-                    if self.view == 'mistakes' and fp == 0 and fn == 0:
-                        continue
-                    #cv2.imshow('pred', img)
-                    if not isinstance(fn, list):
-                        fp0 = fp
-                    elif len(fp) == 0:
-                        fp0 = 0
-                    else:
-                        fp0 = fp[0]
-                    if not isinstance(fn, list):
-                        fn0 = fn
-                    elif len(fn) == 0:
-                        fn0 = 0
-                    else:
-                        fn0 = fn[0]
-                    img_name = 'image_%d_fp[%.2f]_fn{%.2f}.jpg' % (idx, fp0, fn0)
-                    cv2.imwrite(f'./datasets/{dataset_name}_{split}_ret/{img_name}', img)
-                    #cv2.waitKey(0)
+                    for i in range(len(prediction)):
+                        img_idx = (idx*8)+i
+                        img_path = dataloader.dataset.annotations[img_idx]['path']
 
+                        #print(f"img_idx: {img_idx}, img_path: {img_path}")
+                        img = (images[i].cpu().permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+                        img, fp, fn = dataloader.dataset.draw_annotation(img_idx, img=img, pred=prediction[i])
+                            #print(f"img: {idx} | fp: {fp} | fn: {fn}")
+                        if self.view == 'mistakes' and fp == 0 and fn == 0:
+                            continue
+                        #cv2.imshow('pred', img)
+                        if not isinstance(fn, list):
+                            fp0 = fp
+                        elif len(fp) == 0:
+                            fp0 = 0
+                        else:
+                            assert False, f"fp is not a list: {fp}"
+                            fp0 = fp[0]
+                        if not isinstance(fn, list):
+                            fn0 = fn
+                        elif len(fn) == 0:
+                            fn0 = 0
+                        else:
+                            fn0 = fn[0]
+                        #img_name = 'image_%d_fp[%.2f]_fn{%.2f}.jpg' % ((idx*8)+i, fp0, fn0)
+                        #cv2.imwrite(f'./datasets/{dataset_name}_{split}_ret/{img_name}', img)
+                        old_ret_img_path = img_path.replace('.jpg', '*_pred.jpg')
+                        ret_img_path = img_path.replace('.jpg', '_fp[%.2f]_fn[%.2f]_pred.jpg' % (fp0, fn0))
+                        os.system("rm -f %s" % old_ret_img_path)
+                        cv2.imwrite(ret_img_path, img)
+                    #cv2.waitKey(0)
+                #debug
+                #print("break here")
+                #break
         if save_predictions:
             with open('predictions.pkl', 'wb') as handle:
                 pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)

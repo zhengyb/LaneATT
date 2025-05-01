@@ -29,8 +29,8 @@ SPLIT_FILES = {
         "label_llamas_images-2014-12-22-15-18-11_mapping_RTC_to_280_left_lanes.json",
     ],
     "train": [
-        "label_data_0313.json",
-        "label_data_0601.json",
+        #"label_data_0313.json",
+        #"label_data_0601.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-18-14-17-05.json",
         "label_llamas_images-2014-12-22-13-04-51_mapping_280N_2nd_lane.json",
@@ -40,14 +40,14 @@ SPLIT_FILES = {
         "label_llamas_images-2014-12-22-15-18-11_mapping_RTC_to_280_left_lanes.json",
     ],
     "val": [
-        "label_data_0531.json",
+        #"label_data_0531.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-18-14-28-45.json",
         "label_llamas_images-2014-12-22-14-01-36_mapping_280N_3rd_lane.json",
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
     ],
     "test": [
-        "test_label.json",
+        #"test_label.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
         "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
@@ -65,7 +65,7 @@ SPLIT_FILES = {
     "test_merge_split_case": [
     ],
     "test_highway_case": [
-        "test_label.json",
+        #"test_label.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
         "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
@@ -133,14 +133,21 @@ class TuSimple(LaneDatasetLoader):
     def get_img_width(self, _):
         return 1280
 
-    def get_metrics(self, lanes, idx):
+    def get_metrics(self, lanes, idx, use_f1=True):
         label = self.annotations[idx]
         org_anno = label["old_anno"]
         pred = self.pred2lanes(org_anno["path"], lanes, org_anno["y_samples"])
-        _, fp, fn, matches, accs, _ = LaneEval.bench(
-            pred, org_anno["org_lanes"], org_anno["y_samples"], 0, True
-        )
-        return fp, fn, matches, accs
+        if use_f1:
+            #print(f"path: {org_anno['path']}")
+            #print(f"org_anno['lanes']: {org_anno['org_lanes']}")
+            _, fp, fn, matches, ious_accs, _ = LaneEval.bench_f1(
+                pred, org_anno["org_lanes"], org_anno["y_samples"], 0, True
+            )
+        else:
+            _, fp, fn, matches, ious_accs, _ = LaneEval.bench(
+                pred, org_anno["org_lanes"], org_anno["y_samples"], 0, True
+            )
+        return fp, fn, matches, ious_accs
 
     def pred2lanes(self, path, pred, y_samples):
         # pred to tusimple annotation for 1 image
@@ -149,10 +156,14 @@ class TuSimple(LaneDatasetLoader):
         for lane in pred:
             xs = lane(ys)  # 采样点归一化的x坐标
             # xs > 1 is added by Reuben.
-            # invalid_mask = (xs < 0) | (xs > 1)  # 背景点mask
-            invalid_mask = (xs < 0)
+            invalid_mask = (xs < 0) | (xs > 1)  # 背景点mask
+            #invalid_mask = (xs < 0)
             lane = (xs * self.get_img_width(path)).astype(int)  # 反归一化到图像像素坐标
             lane[invalid_mask] = -2  # 背景点赋值为-2
+            #invalid_mask = (lane < 0)
+            #invalid_count = np.sum(invalid_mask)
+            #if len(ys) - invalid_count < 2:
+            #    continue
             lanes.append(lane.tolist())
 
         return lanes

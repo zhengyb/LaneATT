@@ -43,6 +43,7 @@ class LaneDataset(Dataset):
             self.dataset = NoLabelDataset(**kwargs)
         else:
             raise NotImplementedError()
+        self.name = self.dataset.name
         self.n_strips = S - 1 # 71条y轴分割线，不含0和360
         self.n_offsets = S # 72个y轴偏移量
         self.normalize = normalize
@@ -215,7 +216,7 @@ class LaneDataset(Dataset):
             # print('fp: {} | fn: {}'.format(fp, fn))
             # print(len(matches), 'matches')
             # print(matches, accs)
-            assert len(matches) == len(pred)
+            assert len(matches) == len(pred), f"matches length: {len(matches)}, pred length: {len(pred)}"
             data.append((matches, accs, pred))
         else:
             fp = fn = None
@@ -228,10 +229,13 @@ class LaneDataset(Dataset):
             for i, l in enumerate(datum):
                 if matches is None:
                     color = GT_COLOR
-                elif matches[i]:
+                    acc = ''
+                elif matches[i]: # pred
                     color = PRED_HIT_COLOR
-                else:
+                    acc = str(round(accs[i], 2))
+                else: # pred miss
                     color = PRED_MISS_COLOR
+                    acc = str(round(accs[i], 2))
                 points = l.points # 归一化坐标
                 points[:, 0] *= img.shape[1] # 转换为像素坐标
                 points[:, 1] *= img.shape[0]
@@ -239,11 +243,19 @@ class LaneDataset(Dataset):
                 points += pad # 添加填充偏移
                 xs, ys = points[:, 0], points[:, 1]
                 # 用相邻点连线绘制2D车道线
+                if len(points) > 0:
+                    text_point = points[0]
+                    img = cv2.putText(img, acc, (text_point[0] + pad, text_point[1] + pad),
+                                  fontFace=cv2.FONT_HERSHEY_COMPLEX,
+                                  fontScale=0.7,
+                                  color=GT_COLOR)
+                
                 for curr_p, next_p in zip(points[:-1], points[1:]):
                     img = cv2.line(img,
                                    tuple(curr_p),
                                    tuple(next_p),
                                    color=color,
+                                   #thickness=30)
                                    thickness=3 if matches is None else 3)
                 # if 'start_x' in l.metadata:
                 #     start_x = l.metadata['start_x'] * img.shape[1]

@@ -48,6 +48,8 @@ def draw_lane(lane, img=None, img_shape=None, width=30):
     pair of points i and i+i"""
     if img is None:
         img = np.zeros(img_shape, dtype=np.uint8)
+    if len(lane) < 2:
+        return img
     lane = lane.astype(np.int32)
     for p1, p2 in zip(lane[:-1], lane[1:]):
         cv2.line(img, tuple(p1), tuple(p2), color=(1,), thickness=width)

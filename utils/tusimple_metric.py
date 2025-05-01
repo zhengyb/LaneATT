@@ -3,6 +3,7 @@ import numpy as np
 import ujson as json
 from sklearn.linear_model import LinearRegression
 from functools import partial
+import cv2
 
 from p_tqdm import t_map, p_map
 from scipy.optimize import linear_sum_assignment
@@ -11,15 +12,24 @@ from utils.llamas_metric import discrete_cross_iou, continuous_cross_iou, interp
 TUSIMPLE_IMG_RES = (720, 1280)
 
 
-def _culane_metric(pred, anno, width=30, iou_threshold=0.5, unofficial=False, img_shape=TUSIMPLE_IMG_RES):
+def _culane_metric(pred, anno, raw_file, width=30, iou_threshold=0.4, unofficial=False, img_shape=TUSIMPLE_IMG_RES,
+                   draw_img=False, img_path=None):
     """Computes CULane's metric for a single image"""
+
+    pred_ious = np.zeros(len(pred))
     if len(pred) == 0:
-        return 0, 0, len(anno)
+        return 0, 0, len(anno), pred_ious, pred_ious > iou_threshold
     if len(anno) == 0:
-        return 0, len(pred), 0
-        
-    #print(f"pred length: {len(pred)}")
-    interp_pred = np.array([interpolate_lane(pred_lane, n=50) for pred_lane in pred])  # (4, 50, 2)
+        return 0, len(pred), 0, pred_ious, pred_ious > iou_threshold
+      
+    #interp_pred = np.array([interpolate_lane(pred_lane, n=50) for pred_lane in pred])  # (4, 50, 2)
+    interp_pred = []
+    for pred_lane in pred:
+        if len(pred_lane) > 1:
+            interp_pred.append(interpolate_lane(pred_lane, n=50))
+        else:
+            interp_pred.append(np.zeros((50, 2)))    
+    interp_pred = np.array(interp_pred)
     #pred = np.array([np.array(pred_lane) for pred_lane in pred], dtype=object)
     anno = np.array([np.array(anno_lane) for anno_lane in anno], dtype=object)
 
@@ -27,12 +37,20 @@ def _culane_metric(pred, anno, width=30, iou_threshold=0.5, unofficial=False, im
         ious = continuous_cross_iou(interp_pred, anno, width=width, img_shape=img_shape)
     else:
         ious = discrete_cross_iou(interp_pred, anno, width=width, img_shape=img_shape)
-
+    #print("ious:")
+    #print(ious)
     row_ind, col_ind = linear_sum_assignment(1 - ious)
+    #debug
+    #print("mached ious:")
+    #print(ious[row_ind, col_ind])
     tp = int((ious[row_ind, col_ind] > iou_threshold).sum())
-    fp = len(pred) - tp
-    fn = len(anno) - tp
-    return tp, fp, fn
+    fp = len(pred) - tp # 误判的车道线
+    fn = len(anno) - tp # 漏判的车道线
+    pred_ious[row_ind] = ious[row_ind, col_ind]
+    #print("pred_ious:")
+    #print(pred_ious)
+    #print(f"tp: {tp}, fp: {fp}, fn: {fn}")
+    return tp, fp, fn, pred_ious, pred_ious > iou_threshold    
 
 
 class LaneEval(object):
@@ -66,11 +84,28 @@ class LaneEval(object):
 
 
     @staticmethod
-    def bench_f1(pred, gt, running_time):
+    def bench_f1(pred, gt, y_samples, running_time, get_matches=False):
         """
         """
-        tp, fp, fn = _culane_metric(pred, gt, unofficial=False)
-        return tp, fp, fn
+
+        pred_lanes = [ list(zip(lane_x, y_samples)) for lane_x in pred]
+        gt_lanes = [ list(zip(lane_x, y_samples)) for lane_x in gt]
+        new_lanes = []
+        for lane in pred_lanes:
+            new_lane = [point for point in lane if point[0] >= 0]
+            #if len(new_lane) > 0:
+            new_lanes.append(new_lane)
+        pred_lanes = new_lanes
+        new_lanes = []
+        for lane in gt_lanes:
+            new_lane = [point for point in lane if point[0] >= 0]
+            #if len(new_lane) > 0:
+            new_lanes.append(new_lane)
+        gt_lanes = new_lanes
+        #print(f"pred_lanes: {pred_lanes}")
+        #print(f"gt_lanes: {gt_lanes}")
+        tp, fp, fn, ious, matches = _culane_metric(pred_lanes, gt_lanes, None, unofficial=False)
+        return tp, fp, fn, matches, ious, None
 
     @staticmethod
     def bench(pred, gt, y_samples, running_time, get_matches=False):
@@ -138,7 +173,7 @@ class LaneEval(object):
 
 
     @staticmethod
-    def bench_one_submit_f1(pred_file, gt_file):
+    def bench_one_submit_f1(pred_file, gt_file, save_img=True):
         """
         bench_one_submit_f1 函数用于计算预测车道线与真实车道线的F1得分。
         input:
@@ -159,6 +194,7 @@ class LaneEval(object):
         run_times = []
         predictions = []
         annotations = []
+        raw_files = []
         for pred in json_pred:
             # for each image
             if 'raw_file' not in pred or 'lanes' not in pred or 'run_time' not in pred:
@@ -188,13 +224,19 @@ class LaneEval(object):
                 iou_pred_lanes.append(lane_ious)
             predictions.append(iou_pred_lanes)
             annotations.append(iou_gt_lanes)
-
+            if save_img:
+                raw_files.append(raw_file)
+            else:
+                raw_files.append(None)
+        #print(f"raw_files: {raw_files[-1]}")
+        #print(f"predictions: {predictions[-1]}")
+        #print(f"annotations: {annotations[-1]}")
         results = p_map(partial(_culane_metric, width=30, unofficial=False, img_shape=TUSIMPLE_IMG_RES),
-                        predictions, annotations)
+                        predictions, annotations, raw_files)
         num = len(gts)
-        total_tp = sum(tp for tp, _, _ in results)
-        total_fp = sum(fp for _, fp, _ in results)
-        total_fn = sum(fn for _, _, fn in results)
+        total_tp = sum(tp for tp, _, _, _, _ in results)
+        total_fp = sum(fp for _, fp, _, _, _ in results)
+        total_fn = sum(fn for _, _, fn, _, _ in results)
         if total_tp == 0:
             precision = 0
             recall = 0
