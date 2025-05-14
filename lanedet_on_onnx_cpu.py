@@ -539,13 +539,16 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
     images_dir = os.path.dirname(dataset_anno_path)
     print(f"Predicting on {DEVICE}...")
     # Process each image in the dataset
+    pred_time_start = time.time()
     for anno_idx in range(len(annotations)):
         if anno_idx > 1000:
             break
         if anno_idx % 2 == 0:
             print("\r\\ {}".format(anno_idx), end="", flush=True)
+            pass
         else:
             print("\r/ {}".format(anno_idx), end="", flush=True)
+            pass
         anno = annotations[anno_idx]
         image_file = os.path.join(images_dir, anno['raw_file'])
         try:
@@ -565,7 +568,8 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
             print(f"Error processing {anno['raw_file']}: {str(e)}")
             # Try to recover and continue with next image
             continue
-
+    pred_time_end = time.time()
+    print(f"FPS: {len(annotations) / (pred_time_end - pred_time_start)}")
     print("Saving predictions...")
     # Save predictions
     with open('pred_list.json', 'w') as f:
@@ -603,11 +607,11 @@ if __name__ == '__main__':
     if True:
         dataset_anno_path = 'datasets/sampled_tusimple/sampled_anno_val.json'
         print("Validate onnx model")
-        #validate_onnx_model(onnx_file, dataset_anno_path)
-        result = json.loads(LaneEval.bench_one_submit_f1('pred_list.json', dataset_anno_path))
-        print("Metrics:")
-        metrics = {}
-        for ret in result:
-            metrics[ret['name']] = ret['value']
-        print(metrics)
+        validate_onnx_model(onnx_file, dataset_anno_path)
+        #result = json.loads(LaneEval.bench_one_submit_f1('pred_list.json', dataset_anno_path))
+        #print("Metrics:")
+        #metrics = {}
+        #for ret in result:
+        #    metrics[ret['name']] = ret['value']
+        #print(metrics)
         print("Validate onnx model done")
