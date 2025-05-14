@@ -45,7 +45,29 @@ def do_nms(proposals, conf_threshold=0.4, nms_thres=50., nms_topk=4):
     proposals = proposals[keep]
     return proposals
 
-def post_process(img, proposals, n_offsets=72, image_file_path=None):
+def visualize_lanes(img, lanes, image_file_path=None):
+    """Visualize detected lanes on the image."""
+    img_h, img_w = img.shape[:2]
+    for idx, lane_points in enumerate(lanes):
+        # Get color using modulo to cycle through predefined colors
+        color = PREDEFINED_COLORS[idx % len(PREDEFINED_COLORS)]
+        
+        # scale back to input size
+        lane_points[:, 0] *= img_w
+        lane_points[:, 1] *= img_h
+        lane_points = lane_points.round().astype(int)
+        for point in lane_points:
+            cv2.circle(img, tuple(point), 2, color, -1)
+
+    # Save the image with the result
+    if image_file_path is not None:
+        output_file_path = image_file_path.split('.jpg')[0] + '_result.jpg'
+        cv2.imwrite(output_file_path, img)
+        print(f"Result saved to {output_file_path}")
+
+    return img
+
+def post_process(proposals, n_offsets=72):
     """Post process the network output."""
     start_time = time.perf_counter()
     
@@ -79,29 +101,12 @@ def post_process(img, proposals, n_offsets=72, image_file_path=None):
         points = torch.stack((lane_xs.reshape(-1, 1), lane_ys.reshape(-1, 1)), dim=1).squeeze(2)
         lanes.append(points.cpu().numpy())
 
-    # Visualize
-    img_h, img_w = img.shape[:2]
-    for idx, lane_points in enumerate(lanes):
-        # Get color using modulo to cycle through predefined colors
-        color = PREDEFINED_COLORS[idx % len(PREDEFINED_COLORS)]
-        
-        # scale back to input size
-        lane_points[:, 0] *= img_w
-        lane_points[:, 1] *= img_h
-        lane_points = lane_points.round().astype(int)
-        for point in lane_points:
-            cv2.circle(img, tuple(point), 2, color, -1)
-
-    # Save the image with the result
-    if image_file_path is not None:
-        output_file_path = image_file_path.split('.jpg')[0] + '_result.jpg'
-        cv2.imwrite(output_file_path, img)
-        print(f"Result saved to {output_file_path}")
-
     elapsed = (time.perf_counter() - start_time) * 1000  # Convert to milliseconds
-    return img
+    # print(f"Post-processing time: {elapsed:.2f}ms")
+    
+    return lanes
 
-def inference_on_image(onnx_file_path, image_file_path, benchmark=False):
+def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visualize=False):
     """Run inference using ONNX runtime on a single image."""
     # Check if ONNX file exists
     if not os.path.exists(onnx_file_path):
@@ -151,13 +156,18 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False):
     
     # Post-processing
     proposals = do_nms(output, conf_threshold=0.5, nms_thres=50., nms_topk=5)
-    result_img = post_process(image_raw, proposals, image_file_path=image_file_path)
+    lanes = post_process(proposals)
     
-    return result_img
+    if visualize:
+        result_img = visualize_lanes(image_raw.copy(), lanes, image_file_path=image_file_path)
+    else:
+        result_img = None
+
+    return lanes, result_img
 
 if __name__ == '__main__':
     onnx_file = './LaneATT_r18_tusimple-0513.onnx'
     image_file = './datasets/tusimple_test_image/3.jpg'
     
     print("ONNX Runtime version:", ort.__version__)
-    inference_on_image(onnx_file, image_file, benchmark=False) 
+    inference_on_image(onnx_file, image_file, benchmark=False, visualize=True) 
