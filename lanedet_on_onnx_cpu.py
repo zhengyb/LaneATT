@@ -6,7 +6,6 @@ import time
 import json
 
 from scipy.optimize import linear_sum_assignment
-from scipy.interpolate import splprep, splev
 
 
 # Global variables and constants
@@ -370,15 +369,6 @@ def discrete_cross_iou(xs, ys, width=30, img_shape=TUSIMPLE_IMG_RES):
             ious[i, j] = (x & y).sum() / (x | y).sum()
     return ious
 
-def interpolate_lane(points, n=50):
-    """Spline interpolation of a lane. Used on the predictions"""
-    x = [x for x, _ in points]
-    y = [y for _, y in points]
-    tck, _ = splprep([x, y], s=0, t=n, k=min(3, len(points) - 1))
-
-    u = np.linspace(0., 1., n) # 生成50个均匀分布的点，归一化
-    return np.array(splev(u, tck)).T # 插值，并转换成(n, 2)的形状
-
 def _culane_metric(pred, anno, raw_file, width=30, iou_threshold=0.4, unofficial=False, img_shape=TUSIMPLE_IMG_RES,
                     draw_img=False, img_path=None):
     """Computes CULane's metric for a single image"""
@@ -389,18 +379,10 @@ def _culane_metric(pred, anno, raw_file, width=30, iou_threshold=0.4, unofficial
     if len(anno) == 0:
         return 0, len(pred), 0, pred_ious, pred_ious > iou_threshold
       
-    #interp_pred = np.array([interpolate_lane(pred_lane, n=50) for pred_lane in pred])  # (4, 50, 2)
-    interp_pred = []
-    for pred_lane in pred:
-        if len(pred_lane) > 1:
-            interp_pred.append(interpolate_lane(pred_lane, n=50))
-        else:
-            interp_pred.append(np.zeros((50, 2)))    
-    interp_pred = np.array(interp_pred)
-    #pred = np.array([np.array(pred_lane) for pred_lane in pred], dtype=object)
+    pred = np.array([np.array(pred_lane) for pred_lane in pred], dtype=object)
     anno = np.array([np.array(anno_lane) for anno_lane in anno], dtype=object)
 
-    ious = discrete_cross_iou(interp_pred, anno, width=width, img_shape=img_shape)
+    ious = discrete_cross_iou(pred, anno, width=width, img_shape=img_shape)
     #print("ious:")
     #print(ious)
     row_ind, col_ind = linear_sum_assignment(1 - ious)
@@ -536,6 +518,7 @@ class LaneEval:
 # Result metrics(GPU):   {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
 # Result metrics(CPU):   {'F1': 0.8208425720620842, 'Precision': 0.863339552238806, 'Recall': 0.7823330515638208, 'FPS': 1000.0, 'TP': 1851, 'FP': 293, 'FN': 515}
 # Result (CPU+local LaneEval):          {'F1': 0.825354609929078, 'Precision': 0.8676607642124884, 'Recall': 0.7869822485207101, 'FPS': 1000.0, 'TP': 1862, 'FP': 284, 'FN': 504}
+# Result (CPU+local LaneEval):          {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
 def validate_onnx_model(onnx_file_path, dataset_anno_path):
     annotations = []
     pred_list = []
@@ -614,5 +597,11 @@ if __name__ == '__main__':
     if True:
         dataset_anno_path = 'datasets/sampled_tusimple/sampled_anno_val.json'
         print("Validate onnx model")
-        validate_onnx_model(onnx_file, dataset_anno_path)
+        #validate_onnx_model(onnx_file, dataset_anno_path)
+        result = json.loads(LaneEval.bench_one_submit_f1('pred_list.json', dataset_anno_path))
+        print("Metrics:")
+        metrics = {}
+        for ret in result:
+            metrics[ret['name']] = ret['value']
+        print(metrics)
         print("Validate onnx model done")
