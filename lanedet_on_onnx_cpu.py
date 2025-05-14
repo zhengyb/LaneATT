@@ -1,10 +1,8 @@
 import os
 import cv2
-import torch
 import numpy as np
 import onnxruntime as ort
 import time
-from nms import nms
 import json
 
 # Global variables and constants
@@ -35,31 +33,6 @@ PREDEFINED_COLORS = [
     (179, 89, 0),   # Brown
     (133, 21, 199)  # Violet
 ]
-
-# Initialize anchor points
-ANCHOR_YS = torch.linspace(1, 0, steps=72, dtype=torch.float32, device=DEVICE)
-ANCHOR_YS = ANCHOR_YS.double()
-
-def do_nms(proposals, conf_threshold=0.4, nms_thres=50., nms_topk=4):
-    """Perform NMS on the proposals."""
-    proposals = torch.from_numpy(proposals).cuda()
-    scores = proposals[:, 1]
-    
-    # apply confidence threshold
-    above_threshold = scores > conf_threshold
-    proposals = proposals[above_threshold]
-    scores = scores[above_threshold]
-    
-    # If no proposals above threshold, return empty tensor with correct shape
-    if len(scores) == 0:
-        return proposals  # proposals will be empty but with correct shape
-    
-    # cuda implementation
-    keep, num_to_keep, _ = nms(proposals, scores, overlap=nms_thres, top_k=nms_topk)
-    keep = keep[:num_to_keep]
-    proposals = proposals[keep]
-    return proposals
-
 
 def compute_iou(a, b, threshold):
     """CPU version of IoU computation for lane proposals.
@@ -95,33 +68,39 @@ def compute_iou(a, b, threshold):
     # Return True if below threshold
     return dist < (threshold * (end - start + 1))
 
-def nms_cpu(proposals, scores, overlap, top_k):
-    """CPU version of NMS.
+
+def do_nms_cpu(proposals, conf_threshold=0.4, nms_thres=50., nms_topk=4):
+    """Perform NMS on the proposals using pure numpy implementation."""
+    # Convert input to numpy if it's not already
+    if isinstance(proposals, np.ndarray):
+        proposals_np = proposals
+    else:
+        proposals_np = proposals.numpy() if hasattr(proposals, 'numpy') else np.array(proposals)
     
-    Args:
-        proposals: Tensor of shape (N, 77) containing lane proposals
-        scores: Tensor of shape (N) containing confidence scores
-        overlap: IoU threshold
-        top_k: Maximum number of proposals to keep
-    Returns:
-        keep: Indices of proposals to keep
-        num_to_keep: Number of proposals kept
-        parent_object_index: Parent object indices for each proposal
-    """
-    if len(proposals) == 0:
-        return [], 0, []
-        
-    N = len(proposals)
+    scores = proposals_np[:, 1]
+    
+    # apply confidence threshold
+    above_threshold = scores > conf_threshold
+    proposals_np = proposals_np[above_threshold]
+    scores = scores[above_threshold]
+    
+    # If no proposals above threshold, return empty array with correct shape
+    if len(scores) == 0:
+        return proposals_np
+    
+    # Sort by confidence score
+    score_order = np.argsort(-scores)  # descending order
+    proposals_np = proposals_np[score_order]
+    
+    # Initialize arrays for NMS
     keep = []
-    parent_object_index = [0] * N
-    
-    # Convert tensors to numpy arrays for CPU processing
-    proposals_np = proposals.numpy()
+    N = len(proposals_np)
+    parent_object_index = np.zeros(N, dtype=np.int64)
     
     # Process boxes in order of confidence
     for i in range(N):
         # If we've collected enough boxes, break
-        if len(keep) >= top_k:
+        if len(keep) >= nms_topk:
             break
             
         # Skip if already marked
@@ -137,39 +116,14 @@ def nms_cpu(proposals, scores, overlap, top_k):
                 continue
                 
             # Check IoU
-            if compute_iou(proposals_np[i], proposals_np[j], overlap):
+            if compute_iou(proposals_np[i], proposals_np[j], nms_thres):
                 parent_object_index[j] = current_idx
                 
         parent_object_index[i] = current_idx
     
-    num_to_keep = min(len(keep), top_k)
-    
-    # Convert to tensors
-    keep_tensor = torch.tensor(keep, dtype=torch.int64)
-    parent_object_index_tensor = torch.tensor(parent_object_index, dtype=torch.int64)
-    num_to_keep_tensor = torch.tensor(num_to_keep, dtype=torch.int64)
-    
-    return keep_tensor, num_to_keep_tensor, parent_object_index_tensor
-
-def do_nms_cpu(proposals, conf_threshold=0.4, nms_thres=50., nms_topk=4):
-    """Perform NMS on the proposals."""
-    proposals = torch.from_numpy(proposals).to(DEVICE)
-    scores = proposals[:, 1]
-    
-    # apply confidence threshold
-    above_threshold = scores > conf_threshold
-    proposals = proposals[above_threshold]
-    scores = scores[above_threshold]
-    
-    # If no proposals above threshold, return empty tensor with correct shape
-    if len(scores) == 0:
-        return proposals  # proposals will be empty but with correct shape
-    
-    # cuda implementation
-    keep, num_to_keep, _ = nms_cpu(proposals, scores, overlap=nms_thres, top_k=nms_topk)
-    keep = keep[:num_to_keep]
-    proposals = proposals[keep]
-    return proposals
+    # Keep only the selected proposals
+    keep = np.array(keep)
+    return proposals_np[keep[:min(len(keep), nms_topk)]]
 
 
 def visualize_lanes(img, lanes, image_file_path=None):
@@ -195,16 +149,20 @@ def visualize_lanes(img, lanes, image_file_path=None):
     return img
 
 def post_process(proposals, n_offsets=72):
-    """Post process the network output."""
+    """Post process the network output using pure numpy implementation."""
     start_time = time.perf_counter()
     
     # Handle empty proposals
     if len(proposals) == 0:
         return []
     
-    # proposals_to_pred
+    # Convert proposals to numpy if needed
+    if not isinstance(proposals, np.ndarray):
+        proposals = proposals.numpy() if hasattr(proposals, 'numpy') else np.array(proposals)
+    
+    # Create anchor points
+    anchor_ys = np.linspace(1, 0, n_offsets, dtype=np.float64)
     n_strips = n_offsets - 1
-    anchor_ys = ANCHOR_YS
     lanes = []
     
     # Handle case when no lanes are detected (all proposals have low confidence)
@@ -212,28 +170,33 @@ def post_process(proposals, n_offsets=72):
         return []
     
     for lane in proposals:
-        lane_xs = lane[5:] / 640
-        start = int(round(lane[2].item() * n_strips))
-        length = int(round(lane[4].item()))
+        lane_xs = lane[5:] / 640  # Normalize x coordinates
+        start = int(round(float(lane[2]) * n_strips))
+        length = int(round(float(lane[4])))
         end = start + length - 1
         end = min(end, len(anchor_ys) - 1)
         
         # if the proposal does not start at the bottom of the image,
         # extend its proposal until the x is outside the image
-        mask = ~((((lane_xs[:start] >= 0.) &
-                   (lane_xs[:start] <= 1.)).cpu().numpy()[::-1].cumprod()[::-1]).astype(bool))
+        mask = ~(((lane_xs[:start] >= 0.) & (lane_xs[:start] <= 1.))[::-1].cumprod()[::-1])
         lane_xs[end + 1:] = -2
         lane_xs[:start][mask] = -2
-        lane_ys = anchor_ys[lane_xs >= 0]
-        lane_xs = lane_xs[lane_xs >= 0]
-        lane_xs = lane_xs.flip(0).double()
-        lane_ys = lane_ys.flip(0)
+        
+        # Keep only the valid points
+        valid_indices = lane_xs >= 0
+        lane_xs = lane_xs[valid_indices]
+        lane_ys = anchor_ys[valid_indices]
+        
+        # Reverse points to maintain correct order
+        lane_xs = lane_xs[::-1]
+        lane_ys = lane_ys[::-1]
         
         if len(lane_xs) <= 1:
             continue
             
-        points = torch.stack((lane_xs.reshape(-1, 1), lane_ys.reshape(-1, 1)), dim=1).squeeze(2)
-        lanes.append(points.cpu().numpy())
+        # Stack x and y coordinates
+        points = np.stack((lane_xs, lane_ys), axis=1)
+        lanes.append(points)
     
     elapsed = (time.perf_counter() - start_time) * 1000  # Convert to milliseconds
     # print(f"Post-processing time: {elapsed:.2f}ms")
@@ -295,10 +258,7 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
     
     # Post-processing with debug info
     try:
-        if DEVICE == DEVICE_CUDA:
-            proposals = do_nms(output, conf_threshold=0.5, nms_thres=50., nms_topk=4)
-        else:
-            proposals = do_nms_cpu(output, conf_threshold=0.5, nms_thres=50., nms_topk=4)
+        proposals = do_nms_cpu(output, conf_threshold=0.5, nms_thres=50., nms_topk=4)
         if len(proposals) == 0:
             #print(f"No proposals above confidence threshold for {image_file_path}")
             return [], None if visualize else None
@@ -310,7 +270,6 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
             
     except Exception as e:
         print(f"Error during post-processing: {str(e)}")
-        torch.cuda.empty_cache()  # Try to recover GPU memory
         return [], None if visualize else None
     
     if visualize:
@@ -406,8 +365,6 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
         try:
             lanes, result_img = inference_on_image(onnx_file_path, image_file, benchmark=False, visualize=False)
             #print(f"Inference {anno['raw_file']}, detected {len(lanes)} lanes")
-            # Clear GPU memory after each image
-            torch.cuda.empty_cache()
             
             # Create prediction in TuSimple format
             pred = {}
@@ -421,7 +378,6 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
         except Exception as e:
             print(f"Error processing {anno['raw_file']}: {str(e)}")
             # Try to recover and continue with next image
-            torch.cuda.empty_cache()
             continue
 
     print("Saving predictions...")
