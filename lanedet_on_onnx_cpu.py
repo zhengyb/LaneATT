@@ -1,3 +1,9 @@
+# lanedet_on_onnx_cpu.py
+# python3 -m venv onnx_infer
+# source onnx_infer/bin/activate
+# pip install opencv-python numpy onnxruntime scipy
+# python3 lanedet_on_onnx_cpu.py
+
 import os
 import cv2
 import numpy as np
