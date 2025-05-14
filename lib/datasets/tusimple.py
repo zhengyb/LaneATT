@@ -29,8 +29,8 @@ SPLIT_FILES = {
         "label_llamas_images-2014-12-22-15-18-11_mapping_RTC_to_280_left_lanes.json",
     ],
     "train": [
-        #"label_data_0313.json",
-        #"label_data_0601.json",
+        "label_data_0313_20250501.json",
+        "label_data_0601_20250501.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-18-14-17-05.json",
         "label_llamas_images-2014-12-22-13-04-51_mapping_280N_2nd_lane.json",
@@ -40,14 +40,14 @@ SPLIT_FILES = {
         "label_llamas_images-2014-12-22-15-18-11_mapping_RTC_to_280_left_lanes.json",
     ],
     "val": [
-        #"label_data_0531.json",
+        "label_data_0531_20250501.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-18-14-28-45.json",
         "label_llamas_images-2014-12-22-14-01-36_mapping_280N_3rd_lane.json",
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
     ],
     "test": [
-        #"test_label.json",
+        #"test_label_20250501.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
         "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
@@ -65,7 +65,7 @@ SPLIT_FILES = {
     "test_merge_split_case": [
     ],
     "test_highway_case": [
-        #"test_label.json",
+        #"test_label_20250501.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
         "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
@@ -227,6 +227,34 @@ class TuSimple(LaneDatasetLoader):
         )
         with open(cache_path, 'wb') as cache_file:
             pkl.dump(self.annotations, cache_file)        
+
+    def random_sample_annotations(self, sample_num, new_dataset_dir):
+        import shutil
+
+        sampled_annotations = random.sample(self.annotations, sample_num)
+        sampled_anno_filename = os.path.join(new_dataset_dir, f"sampled_anno_{self.split}.json")
+        new_image_dir = os.path.join(new_dataset_dir, "images", self.split)
+        if os.path.exists(new_image_dir):
+            shutil.rmtree(new_image_dir)
+        os.makedirs(new_image_dir, exist_ok=True)
+        with open(sampled_anno_filename, "w") as f:
+            for idx in range(len(sampled_annotations)):
+                anno = sampled_annotations[idx]
+                old_image_path = anno["org_path"]
+                new_image_file = f"{idx:06d}.jpg"
+                new_image_path = os.path.join(new_image_dir, new_image_file)
+                # TODO: copy image to new_dataset_dir
+                shutil.copy(os.path.join(self.root, old_image_path), new_image_path)
+                tusimple_anno = {
+                    "raw_file": os.path.join("images", self.split, new_image_file),
+                    "h_samples": anno["y_samples"],
+                    "lanes": anno["org_lanes"],
+                }
+                f.write(json.dumps(tusimple_anno))
+                f.write("\n")
+
+        print(f"Sampled {sample_num} annotations from {self.split} set of TuSimple dataset")
+        return sampled_annotations
 
     def transform_annotations(self, transform):
         self.annotations = list(map(transform, self.annotations))

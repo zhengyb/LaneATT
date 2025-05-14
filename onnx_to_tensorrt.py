@@ -347,10 +347,10 @@ def engine_inference(onnx_file_path, image_file_path, benchmark=False,
 
 if __name__ == '__main__':
     #image_file = './samples/02610.jpg'
-    image_file = './datasets/tusimple_test_image/2.jpg'
+    image_file = './datasets/tusimple_test_image/3.jpg'
     #image_file = './datasets/route28_result/5625.jpg'
-    onnx_file = './LaneATT_r18_llamas.onnx'
-
+    #onnx_file = './LaneATT_r18_llamas.onnx'
+    onnx_file = './LaneATT_r18_tusimple-0430.onnx'
     print("TensorRT version:", trt.__version__)
 
     engine_inference(onnx_file, image_file, benchmark=True, warmup=10, repeats=100)
