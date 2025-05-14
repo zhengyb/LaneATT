@@ -5,6 +5,7 @@ import numpy as np
 import onnxruntime as ort
 import time
 from nms import nms
+import json
 
 # Predefined 20 distinct colors in BGR format
 PREDEFINED_COLORS = [
@@ -30,14 +31,23 @@ PREDEFINED_COLORS = [
     (133, 21, 199)  # Violet
 ]
 
+
+ANCHOR_YS = torch.linspace(1, 0, steps=72, dtype=torch.float32, device='cuda:0')
+ANCHOR_YS = ANCHOR_YS.double()
+
 def do_nms(proposals, conf_threshold=0.4, nms_thres=50., nms_topk=4):
     """Perform NMS on the proposals."""
     proposals = torch.from_numpy(proposals).cuda()
     scores = proposals[:, 1]
+    
     # apply confidence threshold
     above_threshold = scores > conf_threshold
     proposals = proposals[above_threshold]
     scores = scores[above_threshold]
+    
+    # If no proposals above threshold, return empty tensor with correct shape
+    if len(scores) == 0:
+        return proposals  # proposals will be empty but with correct shape
     
     # cuda implementation
     keep, num_to_keep, _ = nms(proposals, scores, overlap=nms_thres, top_k=nms_topk)
@@ -71,11 +81,18 @@ def post_process(proposals, n_offsets=72):
     """Post process the network output."""
     start_time = time.perf_counter()
     
+    # Handle empty proposals
+    if len(proposals) == 0:
+        return []
+    
     # proposals_to_pred
     n_strips = n_offsets - 1
-    anchor_ys = torch.linspace(1, 0, steps=n_offsets, dtype=torch.float32, device='cuda:0')
-    anchor_ys = anchor_ys.double()
+    anchor_ys = ANCHOR_YS
     lanes = []
+    
+    # Handle case when no lanes are detected (all proposals have low confidence)
+    if proposals.shape[0] == 0:
+        return []
     
     for lane in proposals:
         lane_xs = lane[5:] / 640
@@ -100,7 +117,7 @@ def post_process(proposals, n_offsets=72):
             
         points = torch.stack((lane_xs.reshape(-1, 1), lane_ys.reshape(-1, 1)), dim=1).squeeze(2)
         lanes.append(points.cpu().numpy())
-
+    
     elapsed = (time.perf_counter() - start_time) * 1000  # Convert to milliseconds
     # print(f"Post-processing time: {elapsed:.2f}ms")
     
@@ -154,9 +171,22 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
     else:
         output = session.run(None, {input_name: image})[0]
     
-    # Post-processing
-    proposals = do_nms(output, conf_threshold=0.5, nms_thres=50., nms_topk=5)
-    lanes = post_process(proposals)
+    # Post-processing with debug info
+    try:
+        proposals = do_nms(output, conf_threshold=0.5, nms_thres=50., nms_topk=4)
+        if len(proposals) == 0:
+            #print(f"No proposals above confidence threshold for {image_file_path}")
+            return [], None if visualize else None
+            
+        lanes = post_process(proposals)
+        if len(lanes) == 0:
+            print(f"No valid lanes after post-processing for {image_file_path}")
+            return [], None if visualize else None
+            
+    except Exception as e:
+        print(f"Error during post-processing: {str(e)}")
+        torch.cuda.empty_cache()  # Try to recover GPU memory
+        return [], None if visualize else None
     
     if visualize:
         result_img = visualize_lanes(image_raw.copy(), lanes, image_file_path=image_file_path)
@@ -165,9 +195,150 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
 
     return lanes, result_img
 
+def pred2lanes(pred, y_samples, img_h, img_w):
+    """Convert lane predictions to TuSimple format.
+    
+    Args:
+        pred: List of lane points, each lane is a numpy array of shape (N, 2) with normalized coordinates
+        y_samples: List of y coordinates to sample
+        img_h: Original image height
+        img_w: Original image width
+    Returns:
+        lanes: List of lanes in TuSimple format
+    """
+    # Convert y_samples to normalized coordinates
+    y_samples = np.array(y_samples, dtype=np.float32) / img_h
+    
+    lanes = []
+    # Handle empty predictions
+    if not pred:
+        return lanes
+        
+    for lane_points in pred:
+        # Convert lane_points to numpy array if it isn't already
+        lane_points = np.array(lane_points)
+        
+        # Skip if lane has too few points
+        if len(lane_points) < 2:
+            continue
+            
+        # Interpolate x coordinates at y_samples
+        lane_xs = []
+        for y in y_samples:
+            # Find the two points that bracket this y
+            above_idx = np.where(lane_points[:, 1] <= y)[0]
+            below_idx = np.where(lane_points[:, 1] > y)[0]
+            
+            if len(above_idx) == 0 or len(below_idx) == 0:
+                # y is outside the range of this lane
+                lane_xs.append(-2)
+                continue
+                
+            # Get the bracketing points
+            p1 = lane_points[above_idx[-1]]
+            p2 = lane_points[below_idx[0]]
+            
+            # Interpolate
+            x = p1[0] + (y - p1[1]) * (p2[0] - p1[0]) / (p2[1] - p1[1])
+            
+            # Convert normalized x to pixel coordinates and handle out of bounds
+            x_px = int(x * img_w)
+            if x_px < 0 or x_px >= img_w:
+                x_px = -2
+            
+            lane_xs.append(x_px)
+            
+        lanes.append(lane_xs)
+    
+    return lanes
+
+# Expected metrics: {'F1': 0.8252276260270932, 'Precision': 0.869443144595227, 'Recall': 0.7852916314454776, 'FPS': 1000.0, 'TP': 1858, 'FP': 279, 'FN': 508}
+# Result metrics:   {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
+def validate_onnx_model(onnx_file_path, dataset_anno_path):
+    annotations = []
+    pred_list = []
+    # Load dataset annotations
+    with open(dataset_anno_path, 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            line = line.strip()
+            if line:
+                annotations.append(json.loads(line))
+    
+    images_dir = os.path.dirname(dataset_anno_path)
+    # Process each image in the dataset
+    for anno_idx in range(len(annotations)):
+        if anno_idx > 1000:
+            break
+        anno = annotations[anno_idx]
+        image_file = os.path.join(images_dir, anno['raw_file'])
+        try:
+            lanes, result_img = inference_on_image(onnx_file_path, image_file, benchmark=False, visualize=False)
+            #print(f"Inference {anno['raw_file']}, detected {len(lanes)} lanes")
+            # Clear GPU memory after each image
+            torch.cuda.empty_cache()
+            
+            # Create prediction in TuSimple format
+            pred = {}
+            pred['raw_file'] = anno['raw_file']
+            pred['h_samples'] = anno['h_samples']
+            # Directly pass the lanes list to pred2lanes without converting to numpy array
+            pred['lanes'] = pred2lanes(lanes, anno['h_samples'], 720, 1280)
+            pred['run_time'] = 1.           
+            pred_list.append(pred)
+            
+        except Exception as e:
+            print(f"Error processing {anno['raw_file']}: {str(e)}")
+            # Try to recover and continue with next image
+            torch.cuda.empty_cache()
+            continue
+
+    # Save predictions
+    with open('pred_list.json', 'w') as f:
+        for pred in pred_list:
+            try:    
+                f.write(json.dumps(pred) + '\n')
+            except Exception as e:
+                print(f"Error writing {pred['raw_file']}: {str(e)}")
+
+    # Uncomment to validate predictions
+    from utils.tusimple_metric import LaneEval
+    result = json.loads(LaneEval.bench_one_submit_f1('pred_list.json', dataset_anno_path))
+    metrics = {}
+    for ret in result:
+        metrics[ret['name']] = ret['value']
+    print(metrics)
+
 if __name__ == '__main__':
     onnx_file = './LaneATT_r18_tusimple-0513.onnx'
-    image_file = './datasets/tusimple_test_image/3.jpg'
-    
-    print("ONNX Runtime version:", ort.__version__)
-    inference_on_image(onnx_file, image_file, benchmark=False, visualize=True) 
+
+    if False:
+        
+        image_file0 = './datasets/sampled_tusimple/images/val/000049.jpg' # 0 lanes
+
+        image_file2 = './datasets/sampled_tusimple/images/val/000048.jpg' # 2 lanes
+        image_file3 = './datasets/sampled_tusimple/images/val/000050.jpg' # 3 lanes
+
+        image_list = [image_file2, image_file0, image_file3]
+        for image_file in image_list:
+            print(f"Inference {image_file}")
+            try:
+                lanes, result_img = inference_on_image(onnx_file, image_file, benchmark=False, visualize=True) 
+                print(f"Inference {image_file} done, detected {len(lanes)} lanes")
+            except Exception as e:
+                print(f"Inference {image_file} failed, error: {e}")
+
+
+    if False:
+        print("ONNX Runtime version:", ort.__version__)
+        for i in range(10):
+            print(f"Inference {i} times")
+        lanes, result_img = inference_on_image(onnx_file, image_file, benchmark=False, visualize=False) 
+        print(f"Inference {i} times done, detected {len(lanes)} lanes")
+
+
+    if True:
+        dataset_anno_path = 'datasets/sampled_tusimple/sampled_anno_val.json'
+        print("Validate onnx model")
+        validate_onnx_model(onnx_file, dataset_anno_path)
+        print("Validate onnx model done")
