@@ -5,11 +5,17 @@ import onnxruntime as ort
 import time
 import json
 
+from scipy.optimize import linear_sum_assignment
+from scipy.interpolate import splprep, splev
+
+
 # Global variables and constants
 DEVICE_CUDA = 'cuda:0'
 DEVICE_CPU = 'cpu'
 DEVICE = DEVICE_CPU  # Default to CPU
 
+
+TUSIMPLE_IMG_RES = (720, 1280)
 # Predefined 20 distinct colors in BGR format
 PREDEFINED_COLORS = [
     (0, 0, 255),    # Red
@@ -124,7 +130,6 @@ def do_nms_cpu(proposals, conf_threshold=0.4, nms_thres=50., nms_topk=4):
     # Keep only the selected proposals
     keep = np.array(keep)
     return proposals_np[keep[:min(len(keep), nms_topk)]]
-
 
 def visualize_lanes(img, lanes, image_file_path=None):
     """Visualize detected lanes on the image."""
@@ -336,9 +341,201 @@ def pred2lanes(pred, y_samples, img_h, img_w):
     
     return lanes
 
+def draw_lane(lane, img=None, img_shape=None, width=30):
+    """Draw a lane (a list of points) on an image by drawing a line with width `width` through each
+    pair of points i and i+i"""
+    if img is None:
+        img = np.zeros(img_shape, dtype=np.uint8)
+    if len(lane) < 2:
+        return img
+    lane = lane.astype(np.int32)
+    for p1, p2 in zip(lane[:-1], lane[1:]):
+        cv2.line(img, tuple(p1), tuple(p2), color=(1,), thickness=width)
+    return img
+
+
+def discrete_cross_iou(xs, ys, width=30, img_shape=TUSIMPLE_IMG_RES):
+    """For each lane in xs, compute its Intersection Over Union (IoU) with each lane in ys by drawing the lanes on
+    an image
+    xs: pred lane point list in [(x, y), ...]
+    ys: gt lane point list in [(x, y), ...]
+    """
+    xs = [draw_lane(lane, img_shape=img_shape, width=width) > 0 for lane in xs]
+    ys = [draw_lane(lane, img_shape=img_shape, width=width) > 0 for lane in ys]
+
+    ious = np.zeros((len(xs), len(ys)))
+    for i, x in enumerate(xs):
+        for j, y in enumerate(ys):
+            # IoU by the definition: sum all intersections (binary and) and divide by the sum of the union (binary or)
+            ious[i, j] = (x & y).sum() / (x | y).sum()
+    return ious
+
+def interpolate_lane(points, n=50):
+    """Spline interpolation of a lane. Used on the predictions"""
+    x = [x for x, _ in points]
+    y = [y for _, y in points]
+    tck, _ = splprep([x, y], s=0, t=n, k=min(3, len(points) - 1))
+
+    u = np.linspace(0., 1., n) # 生成50个均匀分布的点，归一化
+    return np.array(splev(u, tck)).T # 插值，并转换成(n, 2)的形状
+
+def _culane_metric(pred, anno, raw_file, width=30, iou_threshold=0.4, unofficial=False, img_shape=TUSIMPLE_IMG_RES,
+                    draw_img=False, img_path=None):
+    """Computes CULane's metric for a single image"""
+
+    pred_ious = np.zeros(len(pred))
+    if len(pred) == 0:
+        return 0, 0, len(anno), pred_ious, pred_ious > iou_threshold
+    if len(anno) == 0:
+        return 0, len(pred), 0, pred_ious, pred_ious > iou_threshold
+      
+    #interp_pred = np.array([interpolate_lane(pred_lane, n=50) for pred_lane in pred])  # (4, 50, 2)
+    interp_pred = []
+    for pred_lane in pred:
+        if len(pred_lane) > 1:
+            interp_pred.append(interpolate_lane(pred_lane, n=50))
+        else:
+            interp_pred.append(np.zeros((50, 2)))    
+    interp_pred = np.array(interp_pred)
+    #pred = np.array([np.array(pred_lane) for pred_lane in pred], dtype=object)
+    anno = np.array([np.array(anno_lane) for anno_lane in anno], dtype=object)
+
+    ious = discrete_cross_iou(interp_pred, anno, width=width, img_shape=img_shape)
+    #print("ious:")
+    #print(ious)
+    row_ind, col_ind = linear_sum_assignment(1 - ious)
+
+    #debug
+    #print("mached ious:")
+    #print(ious[row_ind, col_ind])
+    tp = int((ious[row_ind, col_ind] > iou_threshold).sum())
+    fp = len(pred) - tp # 误判的车道线
+    fn = len(anno) - tp # 漏判的车道线
+    pred_ious[row_ind] = ious[row_ind, col_ind]
+    #print("pred_ious:")
+    #print(pred_ious)
+    #print(f"tp: {tp}, fp: {fp}, fn: {fn}")
+    return tp, fp, fn, pred_ious, pred_ious > iou_threshold    
+
+class LaneEval:
+    @staticmethod
+    def bench_one_submit_f1(pred_file, gt_file, save_img=True):
+        """
+        bench_one_submit_f1 函数用于计算预测车道线与真实车道线的F1得分。
+        input:
+            pred_file: 预测的车道线
+            gt_file: 真实的车道线
+        output:
+            f1: f1得分
+        """
+        try:
+            json_pred = [json.loads(line) for line in open(pred_file).readlines()]
+        except BaseException as e:
+            raise Exception('Fail to load json file of the prediction.')
+        try:
+            json_gt = [json.loads(line) for line in open(gt_file).readlines()]
+        except BaseException as e:
+            print(f"Fail to load json file of the ground truth: {e}")
+            raise Exception('Fail to load json file of the ground truth.')
+        if len(json_gt) != len(json_pred):
+            raise Exception('We do not get the predictions of all the test tasks')
+        gts = {img['raw_file']: img for img in json_gt}
+        total_tp, total_fp, total_fn = 0., 0., 0.
+        run_times = []
+        predictions = []
+        annotations = []
+        raw_files = []
+        for pred in json_pred:
+            # for each image
+            if 'raw_file' not in pred or 'lanes' not in pred or 'run_time' not in pred:
+                raise Exception('raw_file or lanes or run_time not in some predictions.')
+            raw_file = pred['raw_file']
+            pred_lanes = pred['lanes']
+            run_time = pred['run_time']
+            run_times.append(run_time)
+            if raw_file not in gts:
+                raise Exception('Some raw_file from your predictions do not exist in the test tasks.')
+            gt = gts[raw_file]
+            gt_lanes = gt['lanes']
+            y_samples = gt['h_samples']
+
+            # format gt_lanes & pred_lanes
+            iou_gt_lanes = []
+            for lane in gt_lanes:
+                lane_ious = [(x, y) for x, y in zip(lane, y_samples) if x >= 0]
+                if len(lane_ious) < 2:
+                    continue
+                iou_gt_lanes.append(lane_ious)
+            iou_pred_lanes = []
+            for lane in pred_lanes:
+                lane_ious = [(x, y) for x, y in zip(lane, y_samples) if x >= 0]
+                if len(lane_ious) < 2:
+                    continue
+                iou_pred_lanes.append(lane_ious)
+            predictions.append(iou_pred_lanes)
+            annotations.append(iou_gt_lanes)
+            if save_img:
+                raw_files.append(raw_file)
+            else:
+                raw_files.append(None)
+        results = []
+        idx = 0
+        for pred, anno, raw_file in zip(predictions, annotations, raw_files):
+            if idx % 2 == 0:
+                print("\r\\ {}".format(idx), end="", flush=True)
+            else:
+                print("\r/ {}".format(idx), end="", flush=True)
+            results.append(_culane_metric(pred, anno, raw_file, width=30, unofficial=False, img_shape=TUSIMPLE_IMG_RES))
+            idx += 1
+        print("")
+        num = len(gts)
+        total_tp = sum(tp for tp, _, _, _, _ in results)
+        total_fp = sum(fp for _, fp, _, _, _ in results)
+        total_fn = sum(fn for _, _, fn, _, _ in results)
+        if total_tp == 0:
+            precision = 0
+            recall = 0
+            f1 = 0
+        else:
+            precision = float(total_tp) / (total_tp + total_fp)
+            recall = float(total_tp) / (total_tp + total_fn)
+            f1 = 2 * precision * recall / (precision + recall)      
+        return json.dumps([{
+            'name': 'F1',
+            'value': f1,
+            'order': 'desc'
+        }, {
+            'name': 'Precision',
+            'value': precision,
+            'order': 'desc'
+        }, {
+            'name': 'Recall',
+            'value': recall,
+            'order': 'desc'
+        }, {
+            'name': 'FPS',
+            'value': 1000. / np.mean(run_times),
+            'order': 'desc'
+        }, {
+            'name': 'TP',
+            'value': total_tp,
+            'order': 'desc'
+        }, {
+            'name': 'FP',
+            'value': total_fp,
+            'order': 'desc'
+        }, {
+            'name': 'FN',
+            'value': total_fn,
+            'order': 'desc'
+        }])
+
+
+
 # Expected metrics:      {'F1': 0.8252276260270932, 'Precision': 0.869443144595227, 'Recall': 0.7852916314454776, 'FPS': 1000.0, 'TP': 1858, 'FP': 279, 'FN': 508}
 # Result metrics(GPU):   {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
 # Result metrics(CPU):   {'F1': 0.8208425720620842, 'Precision': 0.863339552238806, 'Recall': 0.7823330515638208, 'FPS': 1000.0, 'TP': 1851, 'FP': 293, 'FN': 515}
+# Result (CPU+local LaneEval):          {'F1': 0.825354609929078, 'Precision': 0.8676607642124884, 'Recall': 0.7869822485207101, 'FPS': 1000.0, 'TP': 1862, 'FP': 284, 'FN': 504}
 def validate_onnx_model(onnx_file_path, dataset_anno_path):
     annotations = []
     pred_list = []
@@ -391,8 +588,8 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
 
     # Uncomment to validate predictions
     print("Validating predictions...")
-    from utils.tusimple_metric import LaneEval
     result = json.loads(LaneEval.bench_one_submit_f1('pred_list.json', dataset_anno_path))
+    print("Metrics:")
     metrics = {}
     for ret in result:
         metrics[ret['name']] = ret['value']
