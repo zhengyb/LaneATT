@@ -266,10 +266,15 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
                 annotations.append(json.loads(line))
     
     images_dir = os.path.dirname(dataset_anno_path)
+    print("Predicting...")
     # Process each image in the dataset
     for anno_idx in range(len(annotations)):
         if anno_idx > 1000:
             break
+        if anno_idx % 2 == 0:
+            print("\r\\ {}".format(anno_idx), end="", flush=True)
+        else:
+            print("\r/ {}".format(anno_idx), end="", flush=True)
         anno = annotations[anno_idx]
         image_file = os.path.join(images_dir, anno['raw_file'])
         try:
@@ -293,6 +298,7 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
             torch.cuda.empty_cache()
             continue
 
+    print("Saving predictions...")
     # Save predictions
     with open('pred_list.json', 'w') as f:
         for pred in pred_list:
@@ -302,13 +308,14 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
                 print(f"Error writing {pred['raw_file']}: {str(e)}")
 
     # Uncomment to validate predictions
+    print("Validating predictions...")
     from utils.tusimple_metric import LaneEval
     result = json.loads(LaneEval.bench_one_submit_f1('pred_list.json', dataset_anno_path))
     metrics = {}
     for ret in result:
         metrics[ret['name']] = ret['value']
     print(metrics)
-
+    print("Validation done")
 if __name__ == '__main__':
     onnx_file = './LaneATT_r18_tusimple-0513.onnx'
 
