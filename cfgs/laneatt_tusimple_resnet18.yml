@@ -14,16 +14,16 @@ model:
     img_h: &img_h 360
     img_w: &img_w 640
 batch_size: 8
-epochs: 240
+epochs: 40
 loss_parameters: {}
 train_parameters:
   conf_threshold:
   nms_thres: 15.
   nms_topk: 3000
 test_parameters:
-  conf_threshold: 0.2
-  nms_thres: 45.
-  nms_topk: &max_lanes 5
+  conf_threshold: 0.5
+  nms_thres: 50.
+  nms_topk: &max_lanes 4
 optimizer:
   name: Adam
   parameters:
@@ -35,8 +35,9 @@ lr_scheduler:
     #T_max: 18500 # 20 * 925 iterations
     #T_max: 37000 # 40 * 925 iterations
     #T_max: 98080 # 20 * 4904 iterations
-    #T_max: 432560  # 40 * 10814， 20250425PM1
-    T_max: 865120  # 80 * 10814, 20250426AM1
+    #T_max: 216280 #20 * 10814 iterations
+    T_max: 432560  # 40 * 10814， 20250425PM1
+    #T_max: 865120  # 80 * 10814, 20250426AM1
 # Dataset settings
 datasets:
   train: &train
@@ -88,3 +89,4 @@ datasets:
       aug_chance: 0
       augmentations:
       root: "datasets/TUSimple/tusimple"
+      #root: "datasets/sampled_tusimple"
