@@ -393,7 +393,9 @@ def get_backbone(backbone, pretrained=False):
         fmap_c = 512
         stride = 32
     elif backbone == 'resnet18':
-        backbone = torch.nn.Sequential(*list(resnet18(pretrained=pretrained).children())[:-2])
+        #backbone = torch.nn.Sequential(*list(resnet18(pretrained=pretrained).children())[:-2])
+        # for non-normalized images
+        backbone = torch.nn.Sequential(*list(resnet18(pretrained=False).children())[:-2])
         fmap_c = 512 # 特征图通道数
         stride = 32 # 特征图下采样倍率
     else:

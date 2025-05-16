@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import imgaug.augmenters as iaa
 from imgaug.augmenters import Resize
+import torch
 from torchvision.transforms import ToTensor
 from torch.utils.data.dataset import Dataset
 from scipy.interpolate import InterpolatedUnivariateSpline
@@ -320,11 +321,17 @@ class LaneDataset(Dataset):
                     exit()
 
         # 6. 图像归一化
-        img = img / 255. # 归一化到[0, 1]
         if self.normalize: # LLAMAS和TuSimple数据集未使用归一化
-            img = (img - IMAGENET_MEAN) / IMAGENET_STD # ImageNet标准化
-        img = self.to_tensor(img.astype(np.float32)) # 转换为Tensor
+            img = img / 255. # 归一化到[0, 1]
+            #img = (img - IMAGENET_MEAN) / IMAGENET_STD # ImageNet标准化
+            img = self.to_tensor(img.astype(np.float32)) # 转换为Tensor
+        else:
+            img = self.no_normalize_transform(img.astype(np.float32)) # 转换为Tensor
         return (img, label, idx)
+    
+    # 保持图像像素范围在 [0, 255]，使用自定义 transform
+    def no_normalize_transform(self, img):
+        return torch.FloatTensor(np.array(img).transpose((2, 0, 1)))  # HWC -> CHW, no division
 
     def __len__(self):
         return len(self.dataset)
