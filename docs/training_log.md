@@ -783,6 +783,121 @@
 }
 ```
 
+## 20. 2025 May 15 AM1, 不做归一化
+- 数据集： 同上
+- anchors文件： 同上。
+- epochs: 40. T_max: 40* 10814
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250515AM1.png)； 
+- epoch 29 在Valid性能：
+```JSON
+ {'F1': 0.8128579346018843, 'Precision': 0.8638229519900054, 'Recall': 0.7675716823141334, 'FPS': 1000.0, 'TP': 24200, 'FP': 3815, 'FN': 7328}
+```
+- epoch 29 在test性能：
+```JSON
+{
+    "test": {
+        "F1": 0.8049768092468526,
+        "Precision": 0.8559239109162785,
+        "Recall": 0.7597540214710072,
+        "FPS": 1000.0,
+        "TP": 21868,
+        "FP": 3681,
+        "FN": 6915
+    },
+    "test_curve_case": {
+        "F1": 0.7888430754305118,
+        "Precision": 0.8538275753439042,
+        "Recall": 0.7330508474576272,
+        "FPS": 1000.0,
+        "TP": 16262,
+        "FP": 2784,
+        "FN": 5922
+    },
+    "test_extreme_weather_case": {
+        "F1": 0.6630380999505194,
+        "Precision": 0.7433088337262516,
+        "Recall": 0.5984146477615273,
+        "FPS": 1000.0,
+        "TP": 5360,
+        "FP": 1851,
+        "FN": 3597
+    },
+    "test_night_case": {
+        "F1": 0.6977200294189753,
+        "Precision": 0.7368284789644013,
+        "Recall": 0.6625538354091491,
+        "FPS": 1000.0,
+        "TP": 5692,
+        "FP": 2033,
+        "FN": 2899
+    },
+    "test_intersection_case": {
+        "F1": 0.598955519538988,
+        "Precision": 0.6891835888934936,
+        "Recall": 0.5296178343949045,
+        "FPS": 1000.0,
+        "TP": 13304,
+        "FP": 6000,
+        "FN": 11816
+    },
+    "test_up_down_case": {
+        "F1": 0.7029341249001028,
+        "Precision": 0.7473901432386502,
+        "Recall": 0.6634698275862069,
+        "FPS": 1000.0,
+        "TP": 6157,
+        "FP": 2081,
+        "FN": 3123
+    },
+    "test_merge_split_case": {
+        "F1": 0.7499772954318409,
+        "Precision": 0.7988005416908492,
+        "Recall": 0.7067785005135228,
+        "FPS": 1000.0,
+        "TP": 4129,
+        "FP": 1040,
+        "FN": 1713
+    },
+    "test_highway_case": {
+        "F1": 0.9322105263157895,
+        "Precision": 0.9723320158102767,
+        "Recall": 0.8952689041649818,
+        "FPS": 1000.0,
+        "TP": 6642,
+        "FP": 189,
+        "FN": 777
+    }
+}
+```
+- **分析**: 比归一化的训练方法性能下降1-2个点，可能的原因有：
+  - 归一化；
+  - ==从resnet pretrained model改为从头训练模型；==
+
+
+## 20. 2025 May 16 PM1, 归一化，resnet reprained=False, ==TODO==
+- 数据集： 同上
+- anchors文件： 同上。
+- epochs: 40. T_max: 40* 10814
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250516PM1.png)； 
+- epoch 29 在Valid性能：
+```JSON
+```
+- epoch 29 在Test性能：
+```JSON
+```
+
+
+## 21. 2025 May ==TODO==, 归一化并减动态均值，resnet reprained=True, ==TODO==
+- 数据集： 同上
+- anchors文件： 同上。
+- epochs: 40. T_max: 40* 10814
+- 最优性能(Valid数据集): ![Metrics](./img/tusimple_metrics_plot-20250516PM1.png)； 
+- epoch 29 在Valid性能：
+```JSON
+```
+- epoch 29 在Test性能：
+```JSON
+```
 
 ## TODO List
 - 把openlane的标签数据可视化为视频，方便人工检查；
