@@ -22,10 +22,11 @@ class LaneATTONNX(torch.nn.Module):
         self.reg_layer = model.reg_layer
         self.attention_layer = model.attention_layer
 
-        # Exporting the operator eye to ONNX opset version 11 is not supported
+        # 修改 attention matrix 的构建方式
         attention_matrix = torch.eye(1000)
         self.non_diag_inds = torch.nonzero(attention_matrix == 0., as_tuple=False)
-        self.non_diag_inds = self.non_diag_inds[:, 1] + 1000 * self.non_diag_inds[:, 0]  # 999000
+        # 保持二维索引形式，不再进行一维转换
+        self.non_diag_inds = self.non_diag_inds.long()  # 确保索引是 long 类型
 
     def forward(self, x):
         batch_features = self.feature_extractor(x)
@@ -45,9 +46,12 @@ class LaneATTONNX(torch.nn.Module):
         softmax = torch.nn.Softmax(dim=1)
         scores = self.attention_layer(batch_anchor_features)
         attention = softmax(scores)
-        attention_matrix = torch.zeros(1000 * 1000, device=x.device)
-        attention_matrix[self.non_diag_inds] = attention.flatten()  # ScatterND
-        attention_matrix = attention_matrix.view(1000, 1000)
+        
+        # 修改 attention matrix 的构建方式
+        attention_matrix = torch.zeros((1000, 1000), device=x.device)
+        # 使用二维索引进行赋值
+        attention_matrix[self.non_diag_inds[:, 0], self.non_diag_inds[:, 1]] = attention.flatten()
+        
         attention_features = torch.matmul(torch.transpose(batch_anchor_features, 0, 1),
                                           torch.transpose(attention_matrix, 0, 1)).transpose(0, 1)
         batch_anchor_features = torch.cat((attention_features, batch_anchor_features), dim=1)
@@ -69,7 +73,7 @@ def export_onnx(onnx_file_path):
     #checkpoint_file_path = 'experiments/laneatt_r18_tusimple/models/model_0100.pt'
     #checkpoint_file_path = 'experiments/laneatt_r18_llamas/models/model_0015.pt'
     #checkpoint_file_path = 'experiments/laneatt_r18_llamas/models/model_0048.pt'
-    checkpoint_file_path = 'experiments/laneatt_r18_tusimple/models/model_0035.pt'
+    checkpoint_file_path = 'experiments/laneatt_r18_tusimple/backup_models/model_0035.pt'
     #anchors_freq_path = 'data/tusimple_anchors_freq.pt'
     #anchors_freq_path = 'data/llamas_anchors_freq.pt'
     anchors_freq_path = 'data/tusimple_250418pm_anchors_mask.pt'
