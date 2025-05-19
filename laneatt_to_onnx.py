@@ -23,10 +23,10 @@ class LaneATTONNX(torch.nn.Module):
         self.attention_layer = model.attention_layer
 
         # 修改 attention matrix 的构建方式
-        attention_matrix = torch.eye(1000)
-        self.non_diag_inds = torch.nonzero(attention_matrix == 0., as_tuple=False)
+        #attention_matrix = torch.eye(1000)
+        #self.non_diag_inds = torch.nonzero(attention_matrix == 0., as_tuple=False)
         # 保持二维索引形式，不再进行一维转换
-        self.non_diag_inds = self.non_diag_inds.long()  # 确保索引是 long 类型
+        #self.non_diag_inds = self.non_diag_inds.long()  # 确保索引是 long 类型
 
     def forward(self, x):
         batch_features = self.feature_extractor(x)
@@ -48,12 +48,22 @@ class LaneATTONNX(torch.nn.Module):
         attention = softmax(scores)
         
         # 修改 attention matrix 的构建方式
-        attention_matrix = torch.zeros((1000, 1000), device=x.device)
+        #attention_matrix = torch.zeros((1000, 1000), device=x.device)
         # 使用二维索引进行赋值
-        attention_matrix[self.non_diag_inds[:, 0], self.non_diag_inds[:, 1]] = attention.flatten()
+        #attention_matrix[self.non_diag_inds[:, 0], self.non_diag_inds[:, 1]] = attention.flatten()
         
-        attention_features = torch.matmul(torch.transpose(batch_anchor_features, 0, 1),
-                                          torch.transpose(attention_matrix, 0, 1)).transpose(0, 1)
+        #attention_features = torch.matmul(torch.transpose(batch_anchor_features, 0, 1),
+        #                                  torch.transpose(attention_matrix, 0, 1)).transpose(0, 1)
+
+        # 创建掩码版本的 attention
+        non_diag_mask = ~torch.eye(1000, dtype=torch.bool, device=x.device)
+        masked_attention = torch.zeros((1000, 1000), device=x.device)
+        masked_attention[non_diag_mask] = attention.flatten()
+
+        # 最终计算
+        attention_features = torch.matmul(masked_attention, batch_anchor_features)
+
+
         batch_anchor_features = torch.cat((attention_features, batch_anchor_features), dim=1)
 
         # Predict
@@ -92,4 +102,4 @@ def export_onnx(onnx_file_path):
 
 
 if __name__ == '__main__':
-    export_onnx('./LaneATT_r18_tusimple-0513.onnx')
+    export_onnx('./LaneATT_r18_tusimple-0519.onnx')
