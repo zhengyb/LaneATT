@@ -4,6 +4,10 @@ import torch.nn.functional as F
 import torchvision.models as models
 import math
 import numpy as np
+from lib.lane import Lane
+from lib.focal_loss import FocalLoss
+from nms import nms
+from lib.matching import match_proposals_with_targets
 
 class LightFeatureCut(nn.Module):
     def __init__(self, fmap_h, fmap_w, n_anchors):
@@ -107,6 +111,7 @@ class LaneATT_Hybrid(nn.Module):
         # 注意力层
         self.attention_layer = nn.Linear(anchor_feat_channels * self.fmap_h, self.N - 1)
         self.initialize_layer(self.attention_layer)
+
         
         # 特征融合
         self.fusion_conv = nn.Conv1d(anchor_feat_channels * 2, anchor_feat_channels, kernel_size=1)
@@ -118,6 +123,10 @@ class LaneATT_Hybrid(nn.Module):
         # 锚点偏移
         self.register_buffer("anchor_xy", self.anchors[:, 2:4].unsqueeze(0))
         self.register_buffer("anchor_template", self.anchors[:, 4:].unsqueeze(0))
+        self.initialize_layer(self.conv_feature)
+        self.initialize_layer(self.conv1)
+        self.initialize_layer(self.cls_layer)
+        self.initialize_layer(self.reg_layer)
 
     @staticmethod
     def initialize_layer(layer):
@@ -179,7 +188,153 @@ class LaneATT_Hybrid(nn.Module):
 
         return anchor
 
-    def forward(self, x):
+    def loss(self, proposals_list, targets, cls_loss_weight=10):
+        focal_loss = FocalLoss(alpha=0.25, gamma=2.)
+        smooth_l1_loss = nn.SmoothL1Loss()
+        cls_loss = 0
+        reg_loss = 0
+        valid_imgs = len(targets)
+        total_positives = 0
+        
+        for proposals, target in zip(proposals_list, targets):
+            # 过滤不存在的车道线
+            target = target[target[:, 1] == 1]
+            if len(target) == 0:
+                # 如果没有目标，所有提议都应该是负样本
+                cls_target = proposals.new_zeros(len(proposals)).long()
+                cls_pred = proposals[:, :2]
+                cls_loss += focal_loss(cls_pred, cls_target).sum()
+                continue
+                
+            # 计算正负样本匹配
+            with torch.no_grad():
+                positives_mask, invalid_offsets_mask, negatives_mask, target_positives_indices = match_proposals_with_targets(
+                    self, self.anchors, target)
+
+            positives = proposals[positives_mask]
+            num_positives = len(positives)
+            total_positives += num_positives
+            negatives = proposals[negatives_mask]
+            num_negatives = len(negatives)
+
+            # 处理没有正样本的情况
+            if num_positives == 0:
+                cls_target = proposals.new_zeros(len(proposals)).long()
+                cls_pred = proposals[:, :2]
+                cls_loss += focal_loss(cls_pred, cls_target).sum()
+                continue
+
+            # 获取分类目标
+            all_proposals = torch.cat([positives, negatives], 0)
+            cls_target = proposals.new_zeros(num_positives + num_negatives).long()
+            cls_target[:num_positives] = 1.
+            cls_pred = all_proposals[:, :2]
+
+            # 回归目标
+            reg_pred = positives[:, 4:]
+            with torch.no_grad():
+                target = target[target_positives_indices]
+                positive_starts = (positives[:, 2] * self.n_strips).round().long()
+                target_starts = (target[:, 2] * self.n_strips).round().long()
+                target[:, 4] -= positive_starts - target_starts
+                all_indices = torch.arange(num_positives, dtype=torch.long)
+                ends = (positive_starts + target[:, 4] - 1).round().long()
+                invalid_offsets_mask = torch.zeros((num_positives, 1 + self.n_offsets + 1),
+                                                   dtype=torch.int, device=proposals.device)
+                invalid_offsets_mask[all_indices, 1 + positive_starts] = 1
+                invalid_offsets_mask[all_indices, 1 + ends + 1] -= 1
+                invalid_offsets_mask = invalid_offsets_mask.cumsum(dim=1) == 0
+                invalid_offsets_mask = invalid_offsets_mask[:, :-1]
+                invalid_offsets_mask[:, 0] = False
+                reg_target = target[:, 4:]
+                reg_target[invalid_offsets_mask] = reg_pred[invalid_offsets_mask]
+
+            # 计算损失
+            reg_loss += smooth_l1_loss(reg_pred, reg_target)
+            cls_loss += focal_loss(cls_pred, cls_target).sum() / num_positives
+
+        # 批次平均
+        cls_loss /= valid_imgs
+        reg_loss /= valid_imgs
+
+        loss = cls_loss_weight * cls_loss + reg_loss
+        return loss, {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'batch_positives': total_positives}
+
+    def nms(self, batch_proposals, batch_attention_matrix, nms_thres, nms_topk, conf_threshold):
+        softmax = nn.Softmax(dim=1)
+        proposals_list = []
+        for proposals, attention_matrix in zip(batch_proposals, batch_attention_matrix):
+            anchor_inds = torch.arange(batch_proposals.shape[1], device=proposals.device)
+            # NMS过程不需要计算梯度
+            with torch.no_grad():
+                scores = softmax(proposals[:, :2])[:, 1]
+                if conf_threshold is not None:
+                    # 应用置信度阈值
+                    above_threshold = scores > conf_threshold
+                    proposals = proposals[above_threshold]
+                    scores = scores[above_threshold]
+                    anchor_inds = anchor_inds[above_threshold]
+                if proposals.shape[0] == 0:
+                    proposals_list.append((proposals[[]], self.anchors[[]], attention_matrix[[]], None))
+                    continue
+                keep, num_to_keep, _ = nms(proposals, scores, overlap=nms_thres, top_k=nms_topk)
+                keep = keep[:num_to_keep]
+            proposals = proposals[keep]
+            anchor_inds = anchor_inds[keep]
+            attention_matrix = attention_matrix[anchor_inds]
+            proposals_list.append((proposals, self.anchors[keep], attention_matrix, anchor_inds))
+
+        return proposals_list
+
+    def proposals_to_pred(self, proposals):
+        self.anchor_ys = self.anchor_ys.to(proposals.device)
+        self.anchor_ys = self.anchor_ys.double()
+        lanes = []
+        for lane in proposals:
+            lane_xs = lane[5:] / self.img_w
+            start = int(round(lane[2].item() * self.n_strips))
+            length = int(round(lane[4].item()))
+            end = start + length - 1
+            end = min(end, len(self.anchor_ys) - 1)
+            # 如果提议不是从图像底部开始，将其延伸到x超出图像
+            mask = ~((((lane_xs[:start] >= 0.) &
+                       (lane_xs[:start] <= 1.)).cpu().numpy()[::-1].cumprod()[::-1]).astype(np.bool_))
+            lane_xs[end + 1:] = -2
+            lane_xs[:start][mask] = -2
+            lane_ys = self.anchor_ys[lane_xs >= 0]
+            lane_xs = lane_xs[lane_xs >= 0]
+            lane_xs = lane_xs.flip(0).double()
+            lane_ys = lane_ys.flip(0)
+            if len(lane_xs) <= 1:
+                continue
+            points = torch.stack((lane_xs.reshape(-1, 1), lane_ys.reshape(-1, 1)), dim=1).squeeze(2)
+            lane = Lane(points=points.cpu().numpy(),
+                        metadata={
+                            'start_x': lane[3],
+                            'start_y': lane[2],
+                            'conf': lane[1]
+                        })
+            lanes.append(lane)
+        return lanes
+
+    def decode(self, proposals_list, as_lanes=False):
+        softmax = nn.Softmax(dim=1)
+        decoded = []
+        for proposals, _, _, _ in proposals_list:
+            proposals[:, :2] = softmax(proposals[:, :2])
+            proposals[:, 4] = torch.round(proposals[:, 4])
+            if proposals.shape[0] == 0:
+                decoded.append([])
+                continue
+            if as_lanes:
+                pred = self.proposals_to_pred(proposals)
+            else:
+                pred = proposals
+            decoded.append(pred)
+
+        return decoded
+
+    def forward(self, x, conf_threshold=None, nms_thres=0, nms_topk=3000):
         # 1. 特征提取
         x = self.feature_extractor(x)     # (B, 512, 11, 20)
         x = self.conv1(x)                 # (B, 64, 11, 20)
@@ -231,4 +386,10 @@ class LaneATT_Hybrid(nn.Module):
         offsets = self.anchor_template + reg
         
         proposals = torch.cat([cls_scores, self.anchor_xy.expand(B, -1, -1), offsets], dim=2)
+        
+        # 9. 应用NMS
+        if conf_threshold is not None:
+            proposals_list = self.nms(proposals, attention_matrix, nms_thres, nms_topk, conf_threshold)
+            return proposals_list
+            
         return proposals 
