@@ -104,6 +104,10 @@ class LaneATT_Hybrid(nn.Module):
         self.conv_feature = nn.Conv2d(anchor_feat_channels, self.N, kernel_size=1)
         self.light_cut = LightFeatureCut(self.fmap_h, self.fmap_w, self.N)
         
+        # 注意力层
+        self.attention_layer = nn.Linear(anchor_feat_channels * self.fmap_h, self.N - 1)
+        self.initialize_layer(self.attention_layer)
+        
         # 特征融合
         self.fusion_conv = nn.Conv1d(anchor_feat_channels * 2, anchor_feat_channels, kernel_size=1)
         
@@ -114,6 +118,13 @@ class LaneATT_Hybrid(nn.Module):
         # 锚点偏移
         self.register_buffer("anchor_xy", self.anchors[:, 2:4].unsqueeze(0))
         self.register_buffer("anchor_template", self.anchors[:, 4:].unsqueeze(0))
+
+    @staticmethod
+    def initialize_layer(layer):
+        if isinstance(layer, (nn.Conv2d, nn.Linear)):
+            torch.nn.init.normal_(layer.weight, mean=0., std=0.001)
+            if layer.bias is not None:
+                torch.nn.init.constant_(layer.bias, 0)
 
     def get_backbone(self, backbone, pretrained):
         if backbone == 'resnet18':
@@ -190,11 +201,32 @@ class LaneATT_Hybrid(nn.Module):
         fused_feat = fused_feat.transpose(1, 2)  # (B, 924, N)
         fused_feat = self.fusion_conv(fused_feat)  # (B, 64, N)
         
-        # 6. 分类和回归
-        cls_logits = self.cls_layer(fused_feat).transpose(1, 2)  # (B, N, 2)
-        reg = self.reg_layer(fused_feat).transpose(1, 2)         # (B, N, 73)
+        # 6. 注意力机制
+        # 计算注意力分数
+        attention_features = fused_feat.transpose(1, 2)  # (B, N, 64)
+        attention_features = attention_features.reshape(-1, self.anchor_feat_channels * self.fmap_h)
+        scores = self.attention_layer(attention_features)  # (B*N, N-1)
         
-        # 7. 生成最终输出
+        # 应用softmax获取注意力权重
+        attention = F.softmax(scores, dim=1).reshape(B, N, -1)  # (B, N, N-1)
+        
+        # 构建注意力矩阵
+        attention_matrix = torch.eye(N, device=x.device).repeat(B, 1, 1)  # (B, N, N)
+        non_diag_inds = torch.nonzero(attention_matrix == 0., as_tuple=False)
+        attention_matrix[:] = 0
+        attention_matrix[non_diag_inds[:, 0], non_diag_inds[:, 1], non_diag_inds[:, 2]] = attention.flatten()
+        
+        # 应用注意力
+        attention_features = torch.bmm(
+            torch.transpose(attention_features.reshape(B, N, -1), 1, 2),
+            torch.transpose(attention_matrix, 1, 2)
+        ).transpose(1, 2)  # (B, N, 64)
+        
+        # 7. 分类和回归
+        cls_logits = self.cls_layer(attention_features.transpose(1, 2)).transpose(1, 2)  # (B, N, 2)
+        reg = self.reg_layer(attention_features.transpose(1, 2)).transpose(1, 2)         # (B, N, 73)
+        
+        # 8. 生成最终输出
         cls_scores = F.softmax(cls_logits, dim=2)
         offsets = self.anchor_template + reg
         
