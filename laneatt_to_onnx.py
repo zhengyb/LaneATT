@@ -25,14 +25,19 @@ class LaneATTONNX(torch.nn.Module):
         self.non_diag_inds = torch.nonzero(attention_matrix == 0., as_tuple=False)
         self.non_diag_inds = self.non_diag_inds[:, 1] + 1000 * self.non_diag_inds[:, 0]  # 999000
 
+        #self.indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs   
+        self.indices = self.indices.contiguous()
+
+        
+
     def forward(self, x):
         batch_features = self.feature_extractor(x)
         batch_features = self.conv1(batch_features)
         # batch_anchor_features = self.cut_anchor_features(batch_features)
         # batchx15360
         batch_anchor_features = batch_features.reshape(-1, int(batch_features.numel()))
-        # h, w = batch_features.shape[2:4]  # 12, 20
-        indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs        
+        # h, w = batch_features.shape[2:4]  # 12, 20     
+        indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs   
         batch_anchor_features = batch_anchor_features[:, indices].\
             view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)        
         # batch_anchor_features[self.invalid_mask] = 0
@@ -71,7 +76,7 @@ def export_onnx(onnx_file_path):
     # e.g. laneatt_r18_culane
     backbone_name = 'resnet18'
     checkpoint_file_path = 'experiments/laneatt_r18_culane/models/model_0015.pt'
-    anchors_freq_path = 'data/culane_anchors_freq.pt'
+    anchors_freq_path = 'data/tusimple_250418pm_anchors_mask.pt'
 
     # Load specified checkpoint
     model = LaneATT(backbone=backbone_name, anchors_freq_path=anchors_freq_path, topk_anchors=1000)
