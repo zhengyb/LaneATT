@@ -89,7 +89,7 @@ def do_nms_cpu(proposals, conf_threshold=0.4, nms_thres=50., nms_topk=4):
         proposals_np = proposals.numpy() if hasattr(proposals, 'numpy') else np.array(proposals)
     
     scores = proposals_np[:, 1]
-    
+    #print(f"scores.shape: {scores.shape}")
     # apply confidence threshold
     above_threshold = scores > conf_threshold
     proposals_np = proposals_np[above_threshold]
@@ -97,6 +97,7 @@ def do_nms_cpu(proposals, conf_threshold=0.4, nms_thres=50., nms_topk=4):
     
     # If no proposals above threshold, return empty array with correct shape
     if len(scores) == 0:
+        print(f"No proposals above confidence threshold")
         return proposals_np
     
     # Sort by confidence score
@@ -264,15 +265,27 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
         print(f"│ 理论FPS : {1000/avg_time:>8.1f} FPS      │")
         print(f"└{'─'*40}┘")
     else:
-        output = session.run(None, {input_name: image})[0]
+        outputs = session.run(None, {input_name: image})
     
     # Post-processing with debug info
     try:
+        # convert shape: (1, 1000, 77) to (1000, 77)
+        cls_scores = outputs[0]
+        anchors_pos = outputs[1]
+        offsets = outputs[2]
+        print(f"cls_scores.shape: {cls_scores.shape}")
+        print(f"anchors_pos.shape: {anchors_pos.shape}")
+        print(f"offsets.shape: {offsets.shape}")
+        # concat cls_scores, anchors_pos, offsets
+        output = np.concatenate([cls_scores, anchors_pos, offsets], axis=2)
+        output = output.squeeze(0)
+        #print(f"output.shape: {output.shape}")
         proposals = do_nms_cpu(output, conf_threshold=0.5, nms_thres=50., nms_topk=4)
         if len(proposals) == 0:
             #print(f"No proposals above confidence threshold for {image_file_path}")
             return [], None if visualize else None
             
+        #print(f"proposals.shape: {proposals.shape}")
         lanes = post_process(proposals)
         if len(lanes) == 0:
             print(f"No valid lanes after post-processing for {image_file_path}")
@@ -525,6 +538,8 @@ class LaneEval:
 # Result metrics(CPU):   {'F1': 0.8208425720620842, 'Precision': 0.863339552238806, 'Recall': 0.7823330515638208, 'FPS': 1000.0, 'TP': 1851, 'FP': 293, 'FN': 515}
 # Result (CPU+local LaneEval):          {'F1': 0.825354609929078, 'Precision': 0.8676607642124884, 'Recall': 0.7869822485207101, 'FPS': 1000.0, 'TP': 1862, 'FP': 284, 'FN': 504}
 # Result (CPU+local LaneEval):          {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
+# Result 0521: {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
+# RKNN FP16 simulator: {'F1': 0.8238575413001501, 'Precision': 0.8366013071895425, 'Recall': 0.8114961961115807, 'FPS': 1000.0, 'TP': 1920, 'FP': 375, 'FN': 446}
 def validate_onnx_model(onnx_file_path, dataset_anno_path):
     annotations = []
     pred_list = []
@@ -592,19 +607,30 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
     
 if __name__ == '__main__':
     onnx_file = './LaneATT_r18_tusimple-0513.onnx'
-
-
+    onnx_file = './LaneATT_r18_tusimple-0519.onnx'
+    #onnx_file = './LaneATT_test.sim-b5-attention-2.onnx'
+    onnx_file = './LaneATT_test.sim-bim.onnx'
+    onnx_file = './LaneATT_test.sim-nobim.onnx'
+    #onnx_file = './LaneATT_test.sim-org.onnx'
+    onnx_file = './LaneATT_test.sim-bim1d.onnx'
+    onnx_file = './LaneATT_test.sim-bvm.onnx'
+    onnx_file = './LaneATT_test.sim-bidx1d.onnx'
+    onnx_file = './LaneATT_test.sim-bim3d.onnx'
+    onnx_file = './LaneATT_test.sim-3outputs.onnx'
     # Display available providers
     print("Available ONNX Runtime providers:", ort.get_available_providers())
     print(f"Using device: {DEVICE}")
+
+    print(f"onnx_file: {onnx_file}")
     
-    if False:
+    if True:
         image_file = 'datasets/sampled_tusimple/images/val/000012.jpg'
+        image_file = 'datasets/tusimple_test_image/0.jpg'
         print("ONNX Runtime version:", ort.__version__)
         lanes, result_img = inference_on_image(onnx_file, image_file, benchmark=False, visualize=True) 
         print(f"Inference done, detected {len(lanes)} lanes")
 
-    if True:
+    if False:
         dataset_anno_path = 'datasets/sampled_tusimple/sampled_anno_val.json'
         print("Validate onnx model")
         validate_onnx_model(onnx_file, dataset_anno_path)

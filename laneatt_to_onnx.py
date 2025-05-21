@@ -130,13 +130,19 @@ class LaneATTONNX(torch.nn.Module):
         xs, ys = map(int, self.anchors.shape)
         anchors = self.anchors[None].expand(bs, xs, ys)
 
+        cls_scores = softmax(cls_logits)
+        anchors_pos = anchors[:, :, 2:4]
+        offsets = anchors[:, :, 4:] + reg
         # Add offsets to anchors (1000, 2+2+73)
-        reg_proposals = torch.cat(
-            [softmax(cls_logits), anchors[:, :, 2:4], anchors[:, :, 4:] + reg], dim=2
-        )
+        #reg_proposals = torch.cat(
+        #    [cls_scores, anchors[:, :, 2:4], anchors[:, :, 4:] + reg], dim=2
+        #)
+        #reg_proposals = torch.cat(
+        #    [cls_scores, anchors_pos, offsets], dim=2
+        #)
 
         #b5
-        return reg_proposals
+        return cls_scores, anchors_pos, offsets
 
 
 def export_onnx(onnx_file_path):
@@ -163,7 +169,7 @@ def export_onnx(onnx_file_path):
         dummy_input,
         onnx_file_path,
         input_names=["images"],
-        output_names=["output"],
+        output_names=["cls_scores", "anchors_pos", "offsets"],
     )
 
     import onnx
@@ -180,8 +186,8 @@ def export_onnx(onnx_file_path):
     except Exception as e:
         print(f"simplifier failure: {e}")
 
-    onnx.save(model_onnx, "LaneATT_test.sim-bim3d.onnx")
-    print(f"simplify done. onnx model save in LaneATT_test.sim-bim3d.onnx")
+    onnx.save(model_onnx, "LaneATT_test.sim-3outputs.onnx")
+    print(f"simplify done. onnx model save in LaneATT_test.sim-3outputs.onnx")
 
 
 if __name__ == "__main__":
