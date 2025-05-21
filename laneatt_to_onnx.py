@@ -42,17 +42,17 @@ class LaneATTONNX(torch.nn.Module):
         #self.register_buffer('indices', indices)
         # register indices as a buffer
         print(f"self.invalid_mask.shape: {self.invalid_mask.shape}")
-        # reshape invalid mask to (1, 704000, 1)
-        self.reshaped_invalid_mask = model.invalid_mask.view(1, -1, 1)
+        # reshape invalid mask from [1000, 64, 11, 1] to [1, 1000, 64, 11, 1]
+        self.reshaped_invalid_mask = model.invalid_mask.view(1, 1000, 64, 11, 1)
         print(f"self.reshaped_invalid_mask.shape: {self.reshaped_invalid_mask.shape}")
         #self.reshaped_valid_mask = torch.logical_not(self.reshaped_invalid_mask)
 
     def simple_cut_features(self, batch_features):
         indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs
         # 使用预定义的索引选择特定位置的特征
-        #batch_anchor_features = batch_features[:, indices].\
-        #    view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
-        batch_anchor_features = batch_features[:, indices]
+        batch_anchor_features = batch_features[:, indices].\
+            view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
+        #batch_anchor_features = batch_features[:, indices]
         return batch_anchor_features
 
     def forward(self, x):
@@ -74,7 +74,7 @@ class LaneATTONNX(torch.nn.Module):
         #b2
         
         # bim
-        # batch_anchor_features[self.invalid_mask] = 0
+        batch_anchor_features[self.reshaped_invalid_mask] = 0
         # 应用无效掩码，将无效区域的特征置为0
         #batch_anchor_features = batch_anchor_features * torch.logical_not(
         #    self.invalid_mask
@@ -86,7 +86,7 @@ class LaneATTONNX(torch.nn.Module):
         # bvm
         #batch_anchor_features = batch_anchor_features * self.reshaped_valid_mask
         # bidx1d
-        batch_anchor_features[self.reshaped_invalid_mask] = 0
+        #batch_anchor_features[self.reshaped_invalid_mask] = 0
 
         # Join proposals from all images into a single proposals features batch
         # batchx1000x704
@@ -180,8 +180,8 @@ def export_onnx(onnx_file_path):
     except Exception as e:
         print(f"simplifier failure: {e}")
 
-    onnx.save(model_onnx, "LaneATT_test.sim-bidx1d.onnx")
-    print(f"simplify done. onnx model save in LaneATT_test.sim-bidx1d.onnx")
+    onnx.save(model_onnx, "LaneATT_test.sim-bim3d.onnx")
+    print(f"simplify done. onnx model save in LaneATT_test.sim-bim3d.onnx")
 
 
 if __name__ == "__main__":
