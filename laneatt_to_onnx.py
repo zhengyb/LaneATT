@@ -42,10 +42,10 @@ class LaneATTONNX(torch.nn.Module):
         #self.register_buffer('indices', indices)
         # register indices as a buffer
         print(f"self.invalid_mask.shape: {self.invalid_mask.shape}")
-        # reshape invalid mask to (704000, 1)
-        reshaped_invalid_mask = model.invalid_mask.view(-1, 1)
-        print(f"reshaped_invalid_mask.shape: {reshaped_invalid_mask.shape}")
-        self.reshaped_valid_mask = torch.logical_not(reshaped_invalid_mask)
+        # reshape invalid mask to (1, 704000, 1)
+        self.reshaped_invalid_mask = model.invalid_mask.view(1, -1, 1)
+        print(f"self.reshaped_invalid_mask.shape: {self.reshaped_invalid_mask.shape}")
+        #self.reshaped_valid_mask = torch.logical_not(self.reshaped_invalid_mask)
 
     def simple_cut_features(self, batch_features):
         indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs
@@ -84,8 +84,9 @@ class LaneATTONNX(torch.nn.Module):
         #    self.reshaped_invalid_mask
         #)
         # bvm
-        batch_anchor_features = batch_anchor_features * self.reshaped_valid_mask
-
+        #batch_anchor_features = batch_anchor_features * self.reshaped_valid_mask
+        # bidx1d
+        batch_anchor_features[self.reshaped_invalid_mask] = 0
 
         # Join proposals from all images into a single proposals features batch
         # batchx1000x704
@@ -179,8 +180,8 @@ def export_onnx(onnx_file_path):
     except Exception as e:
         print(f"simplifier failure: {e}")
 
-    onnx.save(model_onnx, "LaneATT_test.sim-bvm.onnx")
-    print(f"simplify done. onnx model save in LaneATT_test.sim-bvm.onnx")
+    onnx.save(model_onnx, "LaneATT_test.sim-bidx1d.onnx")
+    print(f"simplify done. onnx model save in LaneATT_test.sim-bidx1d.onnx")
 
 
 if __name__ == "__main__":
