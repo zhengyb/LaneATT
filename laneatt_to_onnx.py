@@ -64,13 +64,13 @@ class LaneATTONNX(torch.nn.Module):
         batch_anchor_features = batch_features.reshape(-1, int(batch_features.numel()))
         #b1
         # h, w = batch_features.shape[2:4]  # 12, 20
-        # indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs
+        indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs
         # 使用预定义的索引选择特定位置的特征
-        # batch_anchor_features = batch_anchor_features[:, self.indices].\
-        #     view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
+        batch_anchor_features = batch_anchor_features[:, indices].\
+            view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
 
         # 使用simple_cut_features处理特征
-        batch_anchor_features = self.simple_cut_features(batch_anchor_features)
+        # batch_anchor_features = self.simple_cut_features(batch_anchor_features)
         #b2
         
         # bim
