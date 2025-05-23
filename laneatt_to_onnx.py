@@ -60,6 +60,7 @@ class LaneATTONNX(torch.nn.Module):
         return batch_anchor_features
 
     def cut_features_nd(self, batch_features):
+        # This will convert to 1D Gather onnx operator
         print(f"batch_features.shape: {batch_features.shape}") # [1, 64, 12, 20]
         batch_size = batch_features.shape[0] # 1
         n_proposals = 1000
