@@ -137,12 +137,12 @@ class LaneATTONNX(torch.nn.Module):
         #reg_proposals = torch.cat(
         #    [cls_scores, anchors[:, :, 2:4], anchors[:, :, 4:] + reg], dim=2
         #)
-        #reg_proposals = torch.cat(
-        #    [cls_scores, anchors_pos, offsets], dim=2
-        #)
+        reg_proposals = torch.cat(
+            [anchors_pos, offsets], dim=2
+        )
 
         #b5
-        return cls_scores, anchors_pos, offsets
+        return cls_scores, reg_proposals
 
 
 def export_onnx(onnx_file_path):
@@ -169,7 +169,7 @@ def export_onnx(onnx_file_path):
         dummy_input,
         onnx_file_path,
         input_names=["images"],
-        output_names=["cls_scores", "anchors_pos", "offsets"],
+        output_names=["cls_scores", "reg_proposals"],
     )
 
     import onnx
@@ -186,8 +186,8 @@ def export_onnx(onnx_file_path):
     except Exception as e:
         print(f"simplifier failure: {e}")
 
-    onnx.save(model_onnx, "LaneATT_test.sim-3outputs.onnx")
-    print(f"simplify done. onnx model save in LaneATT_test.sim-3outputs.onnx")
+    onnx.save(model_onnx, "LaneATT_test.sim-2outputs.onnx")
+    print(f"simplify done. onnx model save in LaneATT_test.sim-2outputs.onnx")
 
 
 if __name__ == "__main__":
