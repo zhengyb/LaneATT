@@ -16,6 +16,7 @@ class LaneATTONNX(torch.nn.Module):
         self.cut_xs = model.cut_xs
         self.cut_ys = model.cut_ys
         self.cut_zs = model.cut_zs
+        print(f"self.cut_xs.shape: {self.cut_xs.shape}, \nself.cut_ys.shape: {self.cut_ys.shape}, \nself.cut_zs.shape: {self.cut_zs.shape}")
         #print(f"self.cut_xs: {self.cut_xs}, self.cut_ys: {self.cut_ys}, self.cut_zs: {self.cut_zs}")
         self.invalid_mask = model.invalid_mask
         # Layers
@@ -44,11 +45,13 @@ class LaneATTONNX(torch.nn.Module):
         # register indices as a buffer
         print(f"self.invalid_mask.shape: {self.invalid_mask.shape}")
         # reshape invalid mask from [1000, 64, 11, 1] to [1, 1000, 64, 11, 1]
-        self.reshaped_invalid_mask = model.invalid_mask.view(1, 1000, 64, 11, 1)
-        print(f"self.reshaped_invalid_mask.shape: {self.reshaped_invalid_mask.shape}")
+        #self.reshaped_invalid_mask = model.invalid_mask.view(1, 1000, 64, 11, 1)
+        #print(f"self.reshaped_invalid_mask.shape: {self.reshaped_invalid_mask.shape}")
         #self.reshaped_valid_mask = torch.logical_not(self.reshaped_invalid_mask)
 
     def simple_cut_features(self, batch_features):
+        # batch_features.shape: 1*64*12*20
+        batch_features = batch_features.reshape(-1, int(batch_features.numel())) # 1*15360
         indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs
         # 使用预定义的索引选择特定位置的特征
         batch_anchor_features = batch_features[:, indices].\
@@ -56,30 +59,41 @@ class LaneATTONNX(torch.nn.Module):
         #batch_anchor_features = batch_features[:, indices]
         return batch_anchor_features
 
+    def cut_features_nd(self, batch_features):
+        print(f"batch_features.shape: {batch_features.shape}") # [1, 64, 12, 20]
+        batch_size = batch_features.shape[0] # 1
+        n_proposals = 1000
+        n_fmaps = batch_features.shape[1] # 64
+        batch_anchor_features = torch.zeros((batch_size, n_proposals, n_fmaps, self.fmap_h))
+        img_features = batch_features[0]
+        rois = img_features[self.cut_zs, self.cut_ys, self.cut_xs].view(n_proposals, n_fmaps, self.fmap_h)
+        print(f"rois.shape: {rois.shape}")
+        print(f"self.invalid_mask.shape: {self.invalid_mask.shape}")
+        # self.invalid_mask: [1000, 64, 11, 1] -> [1000, 64, 11]
+        invalid_mask = self.invalid_mask.view(1000, 64, 11)
+
+        rois[invalid_mask] = 0
+        batch_anchor_features[0] = rois
+        
+        #batch_anchor_features = batch_anchor_features.view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
+        print(f"batch_anchor_features.shape: {batch_anchor_features.shape}")
+        return batch_anchor_features
+    
+
     def forward(self, x):
         batch_features = self.feature_extractor(x)
         batch_features = self.conv1(batch_features)
         # batch_anchor_features = self.cut_anchor_features(batch_features)
         # batchx15360
-        # 直接在4维张量上进行索引操作
-        #indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs
-        # 使用所有三个维度进行索引
-        #print(f"batch_features.shape: {batch_features.shape}")(-1, 64, 12, 20)
-        #batch_anchor_features = batch_features.view(-1, 64, 12, 20)
-        # 计算每个维度的索引
-        z_indices = self.cut_zs % 64 # 64是特征通道数
-        y_indices = self.cut_ys % 12  
-        x_indices = self.cut_xs % 20
-        # 使用所有维度进行索引
-        batch_anchor_features = batch_features[:, z_indices, y_indices, x_indices].\
-            view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
+        #batch_anchor_features = self.cut_features_advanced_indexing(batch_features)
 
         # 使用simple_cut_features处理特征
-        # batch_anchor_features = self.simple_cut_features(batch_anchor_features)
+        #batch_anchor_features = self.simple_cut_features(batch_features)
+        batch_anchor_features = self.cut_features_nd(batch_features)
         #b2
         
         # bim
-        batch_anchor_features[self.reshaped_invalid_mask] = 0
+        #batch_anchor_features[self.reshaped_invalid_mask] = 0
         # 应用无效掩码，将无效区域的特征置为0
         #batch_anchor_features = batch_anchor_features * torch.logical_not(
         #    self.invalid_mask
