@@ -45,7 +45,7 @@ class LaneATTONNX(torch.nn.Module):
         # register indices as a buffer
         print(f"self.invalid_mask.shape: {self.invalid_mask.shape}")
         # reshape invalid mask from [1000, 64, 11, 1] to [1, 1000, 64, 11, 1]
-        #self.reshaped_invalid_mask = model.invalid_mask.view(1, 1000, 64, 11, 1)
+        self.reshaped_invalid_mask = model.invalid_mask.view(1, 1000, 64, 11, 1)
         #print(f"self.reshaped_invalid_mask.shape: {self.reshaped_invalid_mask.shape}")
         #self.reshaped_valid_mask = torch.logical_not(self.reshaped_invalid_mask)
 
@@ -56,11 +56,14 @@ class LaneATTONNX(torch.nn.Module):
         # 使用预定义的索引选择特定位置的特征
         batch_anchor_features = batch_features[:, indices].\
             view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
+        batch_anchor_features[self.reshaped_invalid_mask] = 0
         #batch_anchor_features = batch_features[:, indices]
         return batch_anchor_features
 
     def cut_features_nd(self, batch_features):
         # This will convert to 1D Gather onnx operator
+        # input: batch_features: [1, 64, 12, 20]
+        # output: batch_anchor_features: [1, 1000, 64, 11]
         print(f"batch_features.shape: {batch_features.shape}") # [1, 64, 12, 20]
         batch_size = batch_features.shape[0] # 1
         n_proposals = 1000
@@ -76,10 +79,37 @@ class LaneATTONNX(torch.nn.Module):
         rois[invalid_mask] = 0
         batch_anchor_features[0] = rois
         
-        #batch_anchor_features = batch_anchor_features.view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
-        print(f"batch_anchor_features.shape: {batch_anchor_features.shape}")
+        print(f"batch_anchor_features.shape: {batch_anchor_features.shape}") # [1, 1000, 64, 11]
         return batch_anchor_features
     
+    def cut_features_nd2(self, batch_features):
+        # batch_features: [1, 64, 12, 20]
+        # want output: [1, 1000, 64, fmap_h]
+        B, C, H, W = batch_features.shape
+        N = 1000   # 1000
+        Fh = 11       # 11
+
+        # reshape your precomputed cut‐indices into shape [N, C, Fh]
+        zs = self.cut_zs.view(N, C, Fh)
+        ys = self.cut_ys.view(N, C, Fh)
+        xs = self.cut_xs.view(N, C, Fh)
+
+        # slice out the features for the single batch‐element
+        feat = batch_features[0]            # [C, H, W]
+
+        # this advanced indexing will map to a single ONNX GatherND
+        rois = feat[zs, ys, xs]             # [N, C, Fh]
+
+        #rois = rois.unsqueeze(0)
+        rois = rois.view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
+        rois[self.reshaped_invalid_mask] = 0
+        # apply your invalid mask (also reshaped to [N, C, Fh])
+        #invalid = self.invalid_mask.view(N, C, Fh)
+        #rois = rois.masked_fill(invalid, 0)
+
+        # restore batch‐dim
+        #return rois.unsqueeze(0)            # [1, N, C, Fh]
+        return rois
 
     def forward(self, x):
         batch_features = self.feature_extractor(x)
@@ -90,7 +120,7 @@ class LaneATTONNX(torch.nn.Module):
 
         # 使用simple_cut_features处理特征
         #batch_anchor_features = self.simple_cut_features(batch_features)
-        batch_anchor_features = self.cut_features_nd(batch_features)
+        batch_anchor_features = self.cut_features_nd2(batch_features)
         #b2
         
         # bim
