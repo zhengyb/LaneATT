@@ -16,6 +16,7 @@ class LaneATTONNX(torch.nn.Module):
         self.cut_xs = model.cut_xs
         self.cut_ys = model.cut_ys
         self.cut_zs = model.cut_zs
+        #print(f"self.cut_xs: {self.cut_xs}, self.cut_ys: {self.cut_ys}, self.cut_zs: {self.cut_zs}")
         self.invalid_mask = model.invalid_mask
         # Layers
         self.feature_extractor = model.feature_extractor
@@ -60,13 +61,17 @@ class LaneATTONNX(torch.nn.Module):
         batch_features = self.conv1(batch_features)
         # batch_anchor_features = self.cut_anchor_features(batch_features)
         # batchx15360
-        # 将特征重塑为一维向量
-        batch_anchor_features = batch_features.reshape(-1, int(batch_features.numel()))
-        #b1
-        # h, w = batch_features.shape[2:4]  # 12, 20
-        indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs
-        # 使用预定义的索引选择特定位置的特征
-        batch_anchor_features = batch_anchor_features[:, indices].\
+        # 直接在4维张量上进行索引操作
+        #indices = self.cut_xs + 20 * self.cut_ys + 12 * 20 * self.cut_zs
+        # 使用所有三个维度进行索引
+        #print(f"batch_features.shape: {batch_features.shape}")(-1, 64, 12, 20)
+        #batch_anchor_features = batch_features.view(-1, 64, 12, 20)
+        # 计算每个维度的索引
+        z_indices = self.cut_zs % 64 # 64是特征通道数
+        y_indices = self.cut_ys % 12  
+        x_indices = self.cut_xs % 20
+        # 使用所有维度进行索引
+        batch_anchor_features = batch_features[:, z_indices, y_indices, x_indices].\
             view(-1, 1000, self.anchor_feat_channels, self.fmap_h, 1)
 
         # 使用simple_cut_features处理特征
@@ -186,8 +191,8 @@ def export_onnx(onnx_file_path):
     except Exception as e:
         print(f"simplifier failure: {e}")
 
-    onnx.save(model_onnx, "LaneATT_test.sim-2outputs.onnx")
-    print(f"simplify done. onnx model save in LaneATT_test.sim-2outputs.onnx")
+    onnx.save(model_onnx, "LaneATT_test.sim-2outputs-2.onnx")
+    print(f"simplify done. onnx model save in LaneATT_test.sim-2outputs-2.onnx")
 
 
 if __name__ == "__main__":

@@ -188,8 +188,10 @@ def post_process(proposals, n_offsets=72):
         end = min(end, len(anchor_ys) - 1)
         
         # if the proposal does not start at the bottom of the image,
-        # extend its proposal until the x is outside the image
-        mask = ~(((lane_xs[:start] >= 0.) & (lane_xs[:start] <= 1.))[::-1].cumprod()[::-1])
+        # extend its proposal until the x is outside the image        
+        mask = np.logical_not(
+            ((lane_xs[:start] >= 0.0) & (lane_xs[:start] <= 1.0))[::-1].cumprod()[::-1]
+        )
         lane_xs[end + 1:] = -2
         lane_xs[:start][mask] = -2
         
@@ -271,13 +273,11 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
     try:
         # convert shape: (1, 1000, 77) to (1000, 77)
         cls_scores = outputs[0]
-        anchors_pos = outputs[1]
-        offsets = outputs[2]
-        print(f"cls_scores.shape: {cls_scores.shape}")
-        print(f"anchors_pos.shape: {anchors_pos.shape}")
-        print(f"offsets.shape: {offsets.shape}")
-        # concat cls_scores, anchors_pos, offsets
-        output = np.concatenate([cls_scores, anchors_pos, offsets], axis=2)
+        reg_proposals = outputs[1]
+        #print(f"cls_scores.shape: {cls_scores.shape}")
+        #print(f"reg_proposals.shape: {reg_proposals.shape}")
+        # concat cls_scores, reg_proposals
+        output = np.concatenate([cls_scores, reg_proposals], axis=2)
         output = output.squeeze(0)
         #print(f"output.shape: {output.shape}")
         proposals = do_nms_cpu(output, conf_threshold=0.5, nms_thres=50., nms_topk=4)
@@ -540,6 +540,8 @@ class LaneEval:
 # Result (CPU+local LaneEval):          {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
 # Result 0521: {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
 # RKNN FP16 simulator: {'F1': 0.8238575413001501, 'Precision': 0.8366013071895425, 'Recall': 0.8114961961115807, 'FPS': 1000.0, 'TP': 1920, 'FP': 375, 'FN': 446}
+# RKNN simulator INT8 hybrid, ecu_thr=200, optlvl=0: {'F1': 0.7910064239828695, 'Precision': 0.8016493055555556, 'Recall': 0.7806424344885884, 'FPS': 1000.0, 'TP': 1847, 'FP': 457, 'FN': 519}
+# RKNN simulator INT8 hybrid, ecu_thr=200, optlvl=3: {'F1': 0.7910064239828695, 'Precision': 0.8016493055555556, 'Recall': 0.7806424344885884, 'FPS': 1000.0, 'TP': 1847, 'FP': 457, 'FN': 519}
 def validate_onnx_model(onnx_file_path, dataset_anno_path):
     annotations = []
     pred_list = []
@@ -616,21 +618,22 @@ if __name__ == '__main__':
     onnx_file = './LaneATT_test.sim-bvm.onnx'
     onnx_file = './LaneATT_test.sim-bidx1d.onnx'
     onnx_file = './LaneATT_test.sim-bim3d.onnx'
-    onnx_file = './LaneATT_test.sim-3outputs.onnx'
+    onnx_file = './LaneATT_test.sim-2outputs.onnx'
+    onnx_file = './LaneATT_test.sim-2outputs-2.onnx'
     # Display available providers
     print("Available ONNX Runtime providers:", ort.get_available_providers())
     print(f"Using device: {DEVICE}")
 
     print(f"onnx_file: {onnx_file}")
     
-    if True:
+    if False:
         image_file = 'datasets/sampled_tusimple/images/val/000012.jpg'
         image_file = 'datasets/tusimple_test_image/0.jpg'
         print("ONNX Runtime version:", ort.__version__)
         lanes, result_img = inference_on_image(onnx_file, image_file, benchmark=False, visualize=True) 
         print(f"Inference done, detected {len(lanes)} lanes")
 
-    if False:
+    if True:
         dataset_anno_path = 'datasets/sampled_tusimple/sampled_anno_val.json'
         print("Validate onnx model")
         validate_onnx_model(onnx_file, dataset_anno_path)
