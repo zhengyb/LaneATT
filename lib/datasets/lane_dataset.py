@@ -299,6 +299,7 @@ class LaneDataset(Dataset):
         # 1. 读取原始图像和标注
         item = self.dataset[idx]
         img_org = cv2.imread(item['path']) # BGR
+        img_org = cv2.cvtColor(img_org, cv2.COLOR_BGR2RGB) # 转换为RGB
         line_strings_org = self.lane_to_linestrings(item['old_anno']['lanes']) # 读取数据集原始标签
         line_strings_org = LineStringsOnImage(line_strings_org, shape=img_org.shape) # 将标注转换为LineStringsOnImage对象s
 

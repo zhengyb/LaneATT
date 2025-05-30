@@ -19,6 +19,7 @@ DEVICE_CUDA = 'cuda:0'
 DEVICE_CPU = 'cpu'
 DEVICE = DEVICE_CPU  # Default to CPU
 
+BGR2RGB_ENABLE = True
 
 TUSIMPLE_IMG_RES = (720, 1280)
 # Predefined 20 distinct colors in BGR format
@@ -239,7 +240,15 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
         return
         
     image = cv2.resize(image_raw, (640, 360), cv2.INTER_LINEAR)
+    if BGR2RGB_ENABLE:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image = image.astype(np.float32) / 255.0
+    
+    # Check if model expects float16 input and convert if necessary
+    input_type = session.get_inputs()[0].type
+    if 'float16' in input_type:
+        image = image.astype(np.float16)
+    
     image = image.transpose([2, 0, 1])  # HWC to CHW
     image = np.expand_dims(image, axis=0)  # Add batch dimension
     
@@ -542,6 +551,11 @@ class LaneEval:
 # RKNN FP16 simulator: {'F1': 0.8238575413001501, 'Precision': 0.8366013071895425, 'Recall': 0.8114961961115807, 'FPS': 1000.0, 'TP': 1920, 'FP': 375, 'FN': 446}
 # RKNN simulator INT8 hybrid, ecu_thr=200, optlvl=0: {'F1': 0.7910064239828695, 'Precision': 0.8016493055555556, 'Recall': 0.7806424344885884, 'FPS': 1000.0, 'TP': 1847, 'FP': 457, 'FN': 519}
 # RKNN simulator INT8 hybrid, ecu_thr=200, optlvl=3: {'F1': 0.7910064239828695, 'Precision': 0.8016493055555556, 'Recall': 0.7806424344885884, 'FPS': 1000.0, 'TP': 1847, 'FP': 457, 'FN': 519}
+#
+# RGB model 0529:
+# sim onnx model: {'F1': 0.8286343612334801, 'Precision': 0.8652253909843606, 'Recall': 0.7950126796280642, 'FPS': 1000.0, 'TP': 1881, 'FP': 293, 'FN': 485}
+# sim fp16 onnx model: {'F1': 0.8289995592772146, 'Precision': 0.8660220994475138, 'Recall': 0.7950126796280642, 'FPS': 1000.0, 'TP': 1881, 'FP': 291, 'FN': 485}
+
 def validate_onnx_model(onnx_file_path, dataset_anno_path):
     annotations = []
     pred_list = []
@@ -608,27 +622,30 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
 
     
 if __name__ == '__main__':
-    onnx_file = './LaneATT_r18_tusimple-0513.onnx'
-    onnx_file = './LaneATT_r18_tusimple-0519.onnx'
+    #onnx_file = './LaneATT_r18_tusimple-0513.onnx'
+    #onnx_file = './LaneATT_r18_tusimple-0519.onnx'
     #onnx_file = './LaneATT_test.sim-b5-attention-2.onnx'
-    onnx_file = './LaneATT_test.sim-bim.onnx'
-    onnx_file = './LaneATT_test.sim-nobim.onnx'
+    #onnx_file = './LaneATT_test.sim-bim.onnx'
+    #onnx_file = './LaneATT_test.sim-nobim.onnx'
     #onnx_file = './LaneATT_test.sim-org.onnx'
-    onnx_file = './LaneATT_test.sim-bim1d.onnx'
-    onnx_file = './LaneATT_test.sim-bvm.onnx'
-    onnx_file = './LaneATT_test.sim-bidx1d.onnx'
-    onnx_file = './LaneATT_test.sim-bim3d.onnx'
-    onnx_file = './LaneATT_test.sim-2outputs.onnx'
-    onnx_file = './LaneATT_test.sim-2outputs-2.onnx'
+    #onnx_file = './LaneATT_test.sim-bim1d.onnx'
+    #onnx_file = './LaneATT_test.sim-bvm.onnx'
+    #onnx_file = './LaneATT_test.sim-bidx1d.onnx'
+    #onnx_file = './LaneATT_test.sim-bim3d.onnx'
+    #onnx_file = './LaneATT_test.sim-2outputs.onnx'
+    #onnx_file = './LaneATT_test.sim-2outputs-2.onnx'
+    #onnx_file = './LaneATT_test.sim-2outputs-3.onnx'
+    onnx_file = './LaneATT_test-0529RGB.sim.onnx'
+    #onnx_file = './LaneATT_test-0529RGB.sim.fp16.onnx'
     # Display available providers
     print("Available ONNX Runtime providers:", ort.get_available_providers())
     print(f"Using device: {DEVICE}")
 
     print(f"onnx_file: {onnx_file}")
     
-    if False:
+    if True:
         image_file = 'datasets/sampled_tusimple/images/val/000012.jpg'
-        image_file = 'datasets/tusimple_test_image/0.jpg'
+        #image_file = 'datasets/tusimple_test_image/0.jpg'
         print("ONNX Runtime version:", ort.__version__)
         lanes, result_img = inference_on_image(onnx_file, image_file, benchmark=False, visualize=True) 
         print(f"Inference done, detected {len(lanes)} lanes")

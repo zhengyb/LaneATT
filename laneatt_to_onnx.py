@@ -1,5 +1,9 @@
 import torch
+import copy
 from lib.models.laneatt import LaneATT
+import onnx
+import onnxsim
+from onnxconverter_common.float16 import convert_float_to_float16
 
 USE_ATTENTION = True
 
@@ -134,7 +138,7 @@ def export_onnx(onnx_file_path):
     # e.g. laneatt_r18_culane
     backbone_name = "resnet18"
     checkpoint_file_path = (
-        "experiments/laneatt_r18_tusimple/backup_models/model_0035.pt"
+        "experiments/laneatt_r18_tusimple/backup_models/model_0033_0529RGB.pt"
     )
     anchors_freq_path = "data/tusimple_250418pm_anchors_mask.pt"
 
@@ -157,13 +161,11 @@ def export_onnx(onnx_file_path):
         output_names=["cls_scores", "reg_proposals"],
     )
 
-    import onnx
-
     model_onnx = onnx.load(onnx_file_path)
 
+    sim_onnx_file_path = onnx_file_path.replace(".onnx", ".sim.onnx")
     # Simplify
     try:
-        import onnxsim
 
         print(f"simplifying with onnxsim {onnxsim.__version__}...")
         model_onnx, check = onnxsim.simplify(model_onnx)
@@ -171,9 +173,18 @@ def export_onnx(onnx_file_path):
     except Exception as e:
         print(f"simplifier failure: {e}")
 
-    onnx.save(model_onnx, "LaneATT_test.sim-2outputs-2.onnx")
-    print(f"simplify done. onnx model save in LaneATT_test.sim-2outputs-2.onnx")
+    onnx.save(model_onnx, sim_onnx_file_path)
+    print(f"simplify done. onnx model save in {sim_onnx_file_path}")
+
+    fp16_onnx_file_path = sim_onnx_file_path.replace(".onnx", ".fp16.onnx")
+    # Convert to FP16
+
+    model_fp32 = onnx.load(sim_onnx_file_path)
+    model_fp16 = convert_float_to_float16(copy.deepcopy(model_fp32))
+    onnx.save(model_fp16, fp16_onnx_file_path)
+    print(f"FP16 model saved to {fp16_onnx_file_path}")
+    
 
 
 if __name__ == "__main__":
-    export_onnx("./LaneATT_test.onnx")
+    export_onnx("./LaneATT_test-0529RGB.onnx")
