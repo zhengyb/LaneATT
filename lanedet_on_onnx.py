@@ -254,7 +254,7 @@ def pred2lanes(pred, y_samples, img_h, img_w):
 
 # Expected metrics: {'F1': 0.8252276260270932, 'Precision': 0.869443144595227, 'Recall': 0.7852916314454776, 'FPS': 1000.0, 'TP': 1858, 'FP': 279, 'FN': 508}
 # Result metrics:   {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
-def validate_onnx_model(onnx_file_path, dataset_anno_path):
+def validate_onnx_model(onnx_file_path, dataset_anno_path, is_carla=False):
     annotations = []
     pred_list = []
     # Load dataset annotations
@@ -264,8 +264,11 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
             line = line.strip()
             if line:
                 annotations.append(json.loads(line))
-    
-    images_dir = os.path.dirname(dataset_anno_path)
+    if is_carla:
+        images_dir_root = dataset_anno_path.split('tusimple_merged')[0]
+        images_dir = os.path.dirname(images_dir_root)
+    else:
+        images_dir = os.path.dirname(dataset_anno_path)
     print("Predicting...")
     # Process each image in the dataset
     for anno_idx in range(len(annotations)):
@@ -316,8 +319,19 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
         metrics[ret['name']] = ret['value']
     print(metrics)
     print("Validation done")
+    return metrics
+
+def generate_anno_path_list(anno_dir_root, split):
+    """Generate a list of annotation file paths for the given split."""
+    anno_files = []
+    for root, _, files in os.walk(anno_dir_root):
+        for file in files:
+            if file.endswith('.json') and split in file:
+                anno_files.append(os.path.join(root, file))
+    return anno_files
+
 if __name__ == '__main__':
-    onnx_file = './LaneATT_r18_tusimple-0513.onnx'
+    onnx_file = './onnx/LaneATT_r18_tusimple-0513.onnx'
 
     if False:
         
@@ -344,8 +358,40 @@ if __name__ == '__main__':
         print(f"Inference {i} times done, detected {len(lanes)} lanes")
 
 
-    if True:
+    if False:
         dataset_anno_path = 'datasets/sampled_tusimple/sampled_anno_val.json'
         print("Validate onnx model")
         validate_onnx_model(onnx_file, dataset_anno_path)
         print("Validate onnx model done")
+
+    if True:
+        metrics_list = []
+        anno_dir_root = 'datasets/tusimple-0325/tusimple_merged/'
+        split = 'test'
+        anno_files = generate_anno_path_list(anno_dir_root, split)
+        print(f"Generated {len(anno_files)} annotation file paths for split '{split}'")
+        for anno_file in anno_files:
+            print(f"Validating on {anno_file}...")
+            metrics = validate_onnx_model(onnx_file, anno_file, is_carla=True)
+            metrics_list.append(metrics)
+            print(f"Validation on {anno_file} done")
+
+        total_metrics = {}
+        for metrics in metrics_list:
+            for key, value in metrics.items():
+                if key not in total_metrics:
+                    total_metrics[key] = 0
+                for key in ('TP', 'FP', 'FN'):
+                    total_metrics[key] += value
+        
+        # recalculate F1, Precision, Recall, etc. based on total TP, FP, FN
+        total_TP = total_metrics.get('TP', 0)
+        total_FP = total_metrics.get('FP', 0)
+        total_FN = total_metrics.get('FN', 0)
+        total_metrics['Precision'] = total_TP / (total_TP + total_FP) if (total_TP + total_FP) > 0 else 0
+        total_metrics['Recall'] = total_TP / (total_TP + total_FN) if (total_TP + total_FN) > 0 else 0
+        total_metrics['F1'] = 2 * total_metrics['Precision'] * total_metrics['Recall'] / (total_metrics['Precision'] + total_metrics['Recall']) if (total_metrics['Precision'] + total_metrics['Recall']) > 0 else 0
+        total_metrics['FPS'] = 1000.0  # Placeholder, since we are not measuring FPS here
+
+        print(f"Total Metrics: {json.dumps(total_metrics, indent=4)}")
+    
