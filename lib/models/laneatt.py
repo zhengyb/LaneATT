@@ -207,7 +207,7 @@ class LaneATT(nn.Module):
         loss = cls_loss_weight * cls_loss + reg_loss
         return loss, {'cls_loss': cls_loss, 'reg_loss': reg_loss, 'batch_positives': total_positives}
 
-    def compute_anchor_cut_indices(self, n_fmaps, fmaps_w, fmaps_h):
+    def compute_anchor_cut_indices(self, n_fmaps=64, fmaps_w=20, fmaps_h=11):
         # definitions
         n_proposals = len(self.anchors_cut)
 
@@ -230,13 +230,50 @@ class LaneATT(nn.Module):
         batch_size = features.shape[0]
         n_proposals = len(self.anchors)
         n_fmaps = features.shape[1]
-        batch_anchor_features = torch.zeros((batch_size, n_proposals, n_fmaps, self.fmap_h, 1), device=features.device)
-
-        # actual cutting
-        for batch_idx, img_features in enumerate(features):
-            rois = img_features[self.cut_zs, self.cut_ys, self.cut_xs].view(n_proposals, n_fmaps, self.fmap_h, 1)
+        
+        if batch_size == 1:
+            # Optimized version for batch_size = 1 using gather
+            # Reshape features to [n_fmaps, fmap_h, fmap_w]
+            features = features.squeeze(0)
+            
+            # Prepare indices for gather operation
+            # Reshape indices to match gather requirements
+            # [n_proposals, n_fmaps, fmap_h, 1] -> [n_proposals * n_fmaps * fmap_h, 3]
+            indices = torch.stack([self.cut_zs, self.cut_ys, self.cut_xs], dim=1)
+            indices = indices.view(-1, 3)
+            
+            # Gather features using indices
+            # Reshape features to [n_fmaps, fmap_h * fmap_w]
+            features_flat = features.reshape(n_fmaps, -1)
+            
+            # Calculate linear indices for each feature map
+            # For each feature map, we need to calculate indices separately
+            gathered_features = []
+            for i in range(n_fmaps):
+                # Get indices for current feature map
+                map_indices = indices[i::n_fmaps]  # Get every nth index
+                # Calculate linear indices for this feature map
+                linear_indices = map_indices[:, 1] * self.fmap_w + map_indices[:, 2]
+                # Gather features for this map
+                gathered = features_flat[i].gather(0, linear_indices)
+                gathered_features.append(gathered)
+            
+            # Stack gathered features and reshape
+            gathered = torch.stack(gathered_features)
+            rois = gathered.view(n_proposals, n_fmaps, self.fmap_h, 1)
+            
+            # Apply invalid mask
             rois[self.invalid_mask] = 0
-            batch_anchor_features[batch_idx] = rois
+            
+            # Add batch dimension back
+            batch_anchor_features = rois.unsqueeze(0)
+        else:
+            # Original implementation for batch_size > 1
+            batch_anchor_features = torch.zeros((batch_size, n_proposals, n_fmaps, self.fmap_h, 1), device=features.device)
+            for batch_idx, img_features in enumerate(features):
+                rois = img_features[self.cut_zs, self.cut_ys, self.cut_xs].view(n_proposals, n_fmaps, self.fmap_h, 1)
+                rois[self.invalid_mask] = 0
+                batch_anchor_features[batch_idx] = rois
 
         return batch_anchor_features
 

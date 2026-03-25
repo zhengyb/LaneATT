@@ -7,7 +7,8 @@ import numpy as np
 from lib.lane import Lane
 from lib.focal_loss import FocalLoss
 from nms import nms
-from lib.matching import match_proposals_with_targets
+from .matching import match_proposals_with_targets
+import time
 
 class LightFeatureCut(nn.Module):
     def __init__(self, fmap_h, fmap_w, n_anchors):
@@ -28,27 +29,54 @@ class LightFeatureCut(nn.Module):
         Returns:
             cut_features: (B, N, C, H, 1) 切割后的特征
         """
+        if self.training:
+            torch.cuda.synchronize()
+            start_time = time.time()
+        
         B, C, H, W = features.shape
         device = features.device
         
         # 1. 计算锚点对应的特征图位置
-        anchor_starts = anchors[:, 2:4]  # (N, 2)
-        anchor_ends = anchors[:, 4:]     # (N, S)
+        anchor_starts = anchors[:, 2:4].to(device)  # (N, 2)
+        anchor_ends = anchors[:, 4:].to(device)     # (N, S)
         
         # 2. 生成特征图网格
         grid_y = self.grid_y.to(device).view(1, 1, -1, 1)  # (1, 1, H, 1)
-        grid_x = self.grid_x.to(device).view(1, 1, 1, -1)  # (1, 1, 1, W)
         
-        # 3. 计算每个锚点的特征图位置
+        # 3. 批量处理所有锚点
+        # 扩展维度以支持广播
+        start_x = anchor_starts[:, 1].view(1, -1, 1, 1)  # (1, N, 1, 1)
+        start_y = anchor_starts[:, 0].view(1, -1, 1, 1)  # (1, N, 1, 1)
+        
+        # 修改：正确处理维度进行线性插值
+        # 将 anchor_ends 重塑为 3D tensor (N, 1, S)
+        anchor_ends_3d = anchor_ends.view(self.n_anchors, 1, -1)
+        
+        # 对每个锚点进行线性插值
+        end_x = F.interpolate(
+            anchor_ends_3d,  # (N, 1, S)
+            size=self.fmap_h,
+            mode='linear',
+            align_corners=True
+        )  # (N, 1, H)
+        
+        # 重塑回需要的维度
+        end_x = end_x.view(1, self.n_anchors, 1, self.fmap_h)  # (1, N, 1, H)
+        
+        # 计算所有锚点的 x 坐标
+        x_coords = start_x + (end_x - start_x) * grid_y  # (1, N, 1, H)
+        
+        # 构建完整的 anchor_positions
         anchor_positions = torch.zeros(B, self.n_anchors, self.fmap_h, 2, device=device)
-        for i in range(self.n_anchors):
-            start_y, start_x = anchor_starts[i]
-            end_x = anchor_ends[i]
-            
-            # 计算每个y位置对应的x坐标
-            x_coords = start_x + (end_x - start_x) * grid_y.view(-1)
-            anchor_positions[:, i, :, 0] = x_coords
-            anchor_positions[:, i, :, 1] = grid_y.view(-1)
+        
+        # 修复：正确处理维度扩展
+        x_coords = x_coords.squeeze(-1)  # (1, N, H)
+        x_coords = x_coords.expand(B, -1, -1)  # (B, N, H)
+        anchor_positions[..., 0] = x_coords
+        
+        grid_y = grid_y.squeeze(-1)  # (1, 1, H)
+        grid_y = grid_y.expand(B, self.n_anchors, -1)  # (B, N, H)
+        anchor_positions[..., 1] = grid_y
         
         # 4. 使用双线性插值提取特征
         cut_features = F.grid_sample(
@@ -58,6 +86,11 @@ class LightFeatureCut(nn.Module):
             padding_mode='zeros',
             align_corners=True
         ).view(B, self.n_anchors, C, self.fmap_h, 1)
+        
+        if self.training:
+            torch.cuda.synchronize()
+            end_time = time.time()
+            print(f"LightFeatureCut forward time: {(end_time - start_time)*1000:.2f}ms")
         
         return cut_features
 
@@ -102,19 +135,14 @@ class LaneATT_Hybrid(nn.Module):
 
         # 特征提取器
         self.feature_extractor, backbone_nb_channels, _ = self.get_backbone(backbone, pretrained_backbone)
+        
+        # 特征处理层
         self.conv1 = nn.Conv2d(backbone_nb_channels, anchor_feat_channels, kernel_size=1)
-
-        # 混合特征提取
-        self.conv_feature = nn.Conv2d(anchor_feat_channels, self.N, kernel_size=1)
-        self.light_cut = LightFeatureCut(self.fmap_h, self.fmap_w, self.N)
+        self.conv2 = nn.Conv2d(anchor_feat_channels, anchor_feat_channels, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(anchor_feat_channels, self.N, kernel_size=1)
         
         # 注意力层
         self.attention_layer = nn.Linear(anchor_feat_channels * self.fmap_h, self.N - 1)
-        self.initialize_layer(self.attention_layer)
-
-        
-        # 特征融合
-        self.fusion_conv = nn.Conv1d(anchor_feat_channels * 2, anchor_feat_channels, kernel_size=1)
         
         # 分类和回归头
         self.cls_layer = nn.Conv1d(anchor_feat_channels * self.fmap_h, 2, kernel_size=1)
@@ -123,8 +151,12 @@ class LaneATT_Hybrid(nn.Module):
         # 锚点偏移
         self.register_buffer("anchor_xy", self.anchors[:, 2:4].unsqueeze(0))
         self.register_buffer("anchor_template", self.anchors[:, 4:].unsqueeze(0))
-        self.initialize_layer(self.conv_feature)
+        
+        # 初始化层
         self.initialize_layer(self.conv1)
+        self.initialize_layer(self.conv2)
+        self.initialize_layer(self.conv3)
+        self.initialize_layer(self.attention_layer)
         self.initialize_layer(self.cls_layer)
         self.initialize_layer(self.reg_layer)
 
@@ -337,59 +369,50 @@ class LaneATT_Hybrid(nn.Module):
     def forward(self, x, conf_threshold=None, nms_thres=0, nms_topk=3000):
         # 1. 特征提取
         x = self.feature_extractor(x)     # (B, 512, 11, 20)
+        
+        # 2. 特征处理
         x = self.conv1(x)                 # (B, 64, 11, 20)
+        x = F.relu(x)
+        x = self.conv2(x)                 # (B, 64, 11, 20)
+        x = F.relu(x)
+        x = self.conv3(x)                 # (B, N, 11, 20)
         
-        # 2. 卷积特征提取
-        conv_feat = self.conv_feature(x)  # (B, N, 11, 20)
+        # 3. 特征重塑
+        B = x.shape[0]
+        x = x.permute(0, 2, 3, 1)         # (B, 11, 20, N)
+        x = x.reshape(B, -1, self.N)      # (B, 220, N)
+        x = x.transpose(1, 2)             # (B, N, 220)
         
-        # 3. 轻量级特征切割
-        cut_feat = self.light_cut(x, self.anchors)  # (B, N, 64, 11, 1)
-        cut_feat = cut_feat.squeeze(-1)   # (B, N, 64, 11)
-        
-        # 4. 特征融合
-        B, N, C, H = cut_feat.shape
-        conv_feat = conv_feat.view(B, N, -1)  # (B, N, 220)
-        cut_feat = cut_feat.view(B, N, -1)    # (B, N, 704)
-        
-        # 5. 特征拼接和融合
-        fused_feat = torch.cat([conv_feat, cut_feat], dim=2)  # (B, N, 924)
-        fused_feat = fused_feat.transpose(1, 2)  # (B, 924, N)
-        fused_feat = self.fusion_conv(fused_feat)  # (B, 64, N)
-        
-        # 6. 注意力机制
-        # 计算注意力分数
-        attention_features = fused_feat.transpose(1, 2)  # (B, N, 64)
-        attention_features = attention_features.reshape(-1, self.anchor_feat_channels * self.fmap_h)
+        # 4. 注意力机制
+        attention_features = x.reshape(-1, x.size(-1))  # (B*N, 220)
         scores = self.attention_layer(attention_features)  # (B*N, N-1)
-        
-        # 应用softmax获取注意力权重
-        attention = F.softmax(scores, dim=1).reshape(B, N, -1)  # (B, N, N-1)
+        attention = F.softmax(scores, dim=1).reshape(B, self.N, -1)  # (B, N, N-1)
         
         # 构建注意力矩阵
-        attention_matrix = torch.eye(N, device=x.device).repeat(B, 1, 1)  # (B, N, N)
+        attention_matrix = torch.eye(self.N, device=x.device).repeat(B, 1, 1)  # (B, N, N)
         non_diag_inds = torch.nonzero(attention_matrix == 0., as_tuple=False)
         attention_matrix[:] = 0
         attention_matrix[non_diag_inds[:, 0], non_diag_inds[:, 1], non_diag_inds[:, 2]] = attention.flatten()
         
         # 应用注意力
         attention_features = torch.bmm(
-            torch.transpose(attention_features.reshape(B, N, -1), 1, 2),
+            torch.transpose(attention_features.reshape(B, self.N, -1), 1, 2),
             torch.transpose(attention_matrix, 1, 2)
-        ).transpose(1, 2)  # (B, N, 64)
+        ).transpose(1, 2)  # (B, N, 220)
         
-        # 7. 分类和回归
+        # 5. 分类和回归
         cls_logits = self.cls_layer(attention_features.transpose(1, 2)).transpose(1, 2)  # (B, N, 2)
         reg = self.reg_layer(attention_features.transpose(1, 2)).transpose(1, 2)         # (B, N, 73)
         
-        # 8. 生成最终输出
+        # 6. 生成最终输出
         cls_scores = F.softmax(cls_logits, dim=2)
         offsets = self.anchor_template + reg
         
         proposals = torch.cat([cls_scores, self.anchor_xy.expand(B, -1, -1), offsets], dim=2)
         
-        # 9. 应用NMS
+        # 7. 应用NMS
         if conf_threshold is not None:
             proposals_list = self.nms(proposals, attention_matrix, nms_thres, nms_topk, conf_threshold)
             return proposals_list
-            
+        
         return proposals 
