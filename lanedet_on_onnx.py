@@ -254,7 +254,7 @@ def pred2lanes(pred, y_samples, img_h, img_w):
 
 # Expected metrics: {'F1': 0.8252276260270932, 'Precision': 0.869443144595227, 'Recall': 0.7852916314454776, 'FPS': 1000.0, 'TP': 1858, 'FP': 279, 'FN': 508}
 # Result metrics:   {'F1': 0.8249113475177304, 'Precision': 0.8671947809878844, 'Recall': 0.7865595942519019, 'FPS': 1000.0, 'TP': 1861, 'FP': 285, 'FN': 505}
-def validate_onnx_model(onnx_file_path, dataset_anno_path, is_carla=False):
+def validate_onnx_model(onnx_file_path, dataset_anno_path, is_carla=False, rgb=False):
     annotations = []
     pred_list = []
     # Load dataset annotations
@@ -331,7 +331,8 @@ def generate_anno_path_list(anno_dir_root, split):
     return anno_files
 
 if __name__ == '__main__':
-    onnx_file = './onnx/LaneATT_r18_tusimple-0513.onnx'
+    #onnx_file = './onnx/LaneATT_r18_tusimple-0513.onnx'
+    onnx_file = './onnx/LaneATT_test-0529RGB.sim.onnx'
 
     if False:
         
@@ -369,6 +370,7 @@ if __name__ == '__main__':
         anno_dir_root = 'datasets/tusimple-0325/tusimple_merged/'
         split = 'test'
         anno_files = generate_anno_path_list(anno_dir_root, split)
+        #anno_files = [anno_files[0], anno_files[1]]  # Only validate on the first two annotation files for now
         print(f"Generated {len(anno_files)} annotation file paths for split '{split}'")
         for anno_file in anno_files:
             print(f"Validating on {anno_file}...")
@@ -378,11 +380,11 @@ if __name__ == '__main__':
 
         total_metrics = {}
         for metrics in metrics_list:
-            for key, value in metrics.items():
+            for key in ('TP', 'FP', 'FN'):
                 if key not in total_metrics:
                     total_metrics[key] = 0
-                for key in ('TP', 'FP', 'FN'):
-                    total_metrics[key] += value
+                value = metrics.get(key, 0)
+                total_metrics[key] += value
         
         # recalculate F1, Precision, Recall, etc. based on total TP, FP, FN
         total_TP = total_metrics.get('TP', 0)

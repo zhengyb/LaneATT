@@ -289,7 +289,7 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
         output = np.concatenate([cls_scores, reg_proposals], axis=2)
         output = output.squeeze(0)
         #print(f"output.shape: {output.shape}")
-        proposals = do_nms_cpu(output, conf_threshold=0.5, nms_thres=50., nms_topk=4)
+        proposals = do_nms_cpu(output, conf_threshold=0.3, nms_thres=50., nms_topk=4)
         if len(proposals) == 0:
             #print(f"No proposals above confidence threshold for {image_file_path}")
             return [], None if visualize else None
@@ -556,7 +556,7 @@ class LaneEval:
 # sim onnx model: {'F1': 0.8286343612334801, 'Precision': 0.8652253909843606, 'Recall': 0.7950126796280642, 'FPS': 1000.0, 'TP': 1881, 'FP': 293, 'FN': 485}
 # sim fp16 onnx model: {'F1': 0.8289995592772146, 'Precision': 0.8660220994475138, 'Recall': 0.7950126796280642, 'FPS': 1000.0, 'TP': 1881, 'FP': 291, 'FN': 485}
 
-def validate_onnx_model(onnx_file_path, dataset_anno_path):
+def validate_onnx_model(onnx_file_path, dataset_anno_path, is_carla=False, visualize=False):
     annotations = []
     pred_list = []
     # Load dataset annotations
@@ -567,7 +567,11 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
             if line:
                 annotations.append(json.loads(line))
     
-    images_dir = os.path.dirname(dataset_anno_path)
+    if is_carla:
+        images_dir_root = dataset_anno_path.split('tusimple_merged')[0]
+        images_dir = os.path.dirname(images_dir_root)
+    else:
+        images_dir = os.path.dirname(dataset_anno_path)
     print(f"Predicting on {DEVICE}...")
     # Process each image in the dataset
     pred_time_start = time.time()
@@ -583,7 +587,7 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
         anno = annotations[anno_idx]
         image_file = os.path.join(images_dir, anno['raw_file'])
         try:
-            lanes, result_img = inference_on_image(onnx_file_path, image_file, benchmark=False, visualize=False)
+            lanes, result_img = inference_on_image(onnx_file_path, image_file, benchmark=False, visualize=visualize)
             #print(f"Inference {anno['raw_file']}, detected {len(lanes)} lanes")
             
             # Create prediction in TuSimple format
@@ -619,8 +623,19 @@ def validate_onnx_model(onnx_file_path, dataset_anno_path):
         metrics[ret['name']] = ret['value']
     print(metrics)
     print("Validation done")
+    return metrics
 
-    
+
+def generate_anno_path_list(anno_dir_root, split):
+    """Generate a list of annotation file paths for the given split."""
+    anno_files = []
+    for root, _, files in os.walk(anno_dir_root):
+        for file in files:
+            if file.endswith('.json') and split in file:
+                anno_files.append(os.path.join(root, file))
+    return anno_files
+
+
 if __name__ == '__main__':
     #onnx_file = './LaneATT_r18_tusimple-0513.onnx'
     #onnx_file = './LaneATT_r18_tusimple-0519.onnx'
@@ -635,12 +650,13 @@ if __name__ == '__main__':
     #onnx_file = './LaneATT_test.sim-2outputs.onnx'
     #onnx_file = './LaneATT_test.sim-2outputs-2.onnx'
     #onnx_file = './LaneATT_test.sim-2outputs-3.onnx'
-    onnx_file = './LaneATT_test-0529RGB.sim.onnx'
+    onnx_file = 'LaneATT_test-0529RGB.sim.onnx'
     #onnx_file = './LaneATT_test-0529RGB.sim.fp16.onnx'
     # Display available providers
     print("Available ONNX Runtime providers:", ort.get_available_providers())
     print(f"Using device: {DEVICE}")
 
+    onnx_file = os.path.join("onnx", onnx_file)
     print(f"onnx_file: {onnx_file}")
     
     if True:
@@ -650,7 +666,7 @@ if __name__ == '__main__':
         lanes, result_img = inference_on_image(onnx_file, image_file, benchmark=False, visualize=True) 
         print(f"Inference done, detected {len(lanes)} lanes")
 
-    if True:
+    if False:
         dataset_anno_path = 'datasets/sampled_tusimple/sampled_anno_val.json'
         print("Validate onnx model")
         validate_onnx_model(onnx_file, dataset_anno_path)
@@ -661,3 +677,37 @@ if __name__ == '__main__':
         #    metrics[ret['name']] = ret['value']
         #print(metrics)
         print("Validate onnx model done")
+
+
+    if True:
+        metrics_list = []
+        anno_dir_root = 'datasets/tusimple-0325/tusimple_merged/'
+        split = 'test'
+        anno_files = generate_anno_path_list(anno_dir_root, split)
+        #anno_files = [anno_files[0], anno_files[1]]  # Only validate on the first two annotation files for now
+        print(f"Generated {len(anno_files)} annotation file paths for split '{split}'")
+        for anno_file in anno_files:
+            print(f"Validating on {anno_file}...")
+            metrics = validate_onnx_model(onnx_file, anno_file, is_carla=True, visualize=False)
+            metrics_list.append(metrics)
+            print(f"Validation on {anno_file} done")
+
+        total_metrics = {}
+        for metrics in metrics_list:
+            for key in ('TP', 'FP', 'FN'):
+                if key not in total_metrics:
+                    total_metrics[key] = 0
+                value = metrics.get(key, 0)
+                total_metrics[key] += value
+        
+        # recalculate F1, Precision, Recall, etc. based on total TP, FP, FN
+        total_TP = total_metrics.get('TP', 0)
+        total_FP = total_metrics.get('FP', 0)
+        total_FN = total_metrics.get('FN', 0)
+        total_metrics['Precision'] = total_TP / (total_TP + total_FP) if (total_TP + total_FP) > 0 else 0
+        total_metrics['Recall'] = total_TP / (total_TP + total_FN) if (total_TP + total_FN) > 0 else 0
+        total_metrics['F1'] = 2 * total_metrics['Precision'] * total_metrics['Recall'] / (total_metrics['Precision'] + total_metrics['Recall']) if (total_metrics['Precision'] + total_metrics['Recall']) > 0 else 0
+        total_metrics['FPS'] = 1000.0  # Placeholder, since we are not measuring FPS here
+
+        print(f"Total Metrics: {json.dumps(total_metrics, indent=4)}")
+    
