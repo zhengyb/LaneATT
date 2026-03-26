@@ -107,8 +107,29 @@ class TuSimple(LaneDatasetLoader):
 
 
     def add_carla_anno_files(self, root_dir, split):
-        # TODO:
-        pass
+        """Auto-discover carla annotation files for the given split.
+
+        Looks in {root_dir}/carla_tusimple/ for files matching the pattern:
+            {dataset}_{split}.json  or  {dataset}_{split}_{N}.json
+        e.g. tusimple-0325_train_1.json, tusimple-0326_test.json
+        """
+        carla_dir = os.path.join(root_dir, 'carla_tusimple')
+        if not os.path.isdir(carla_dir):
+            return
+        carla_files = []
+        # Pattern: after the dataset prefix, the split name appears between underscores
+        # e.g. "tusimple-0325_train_1.json" -> match "_train_" or "_train."
+        suffix_with_num = f'_{split}_'   # tusimple-0325_train_1.json
+        suffix_exact = f'_{split}.json'  # tusimple-0326_test.json
+        for fname in sorted(os.listdir(carla_dir)):
+            if not fname.endswith('.json'):
+                continue
+            if suffix_with_num in fname or fname.endswith(suffix_exact):
+                carla_files.append(os.path.join(carla_dir, fname))
+        self.anno_files.extend(carla_files)
+        if carla_files:
+            self.logger.info("Found %d carla annotation files for split '%s'",
+                             len(carla_files), split)
 
     def get_scene_anno_files(self, root_dir, split):
         scene_anno_filename = split.replace("test_", "ol_scene_") + ".json"
