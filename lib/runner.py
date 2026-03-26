@@ -88,17 +88,21 @@ class Runner:
         for scene_name in scene_list:
             self.cfg['datasets']['test']['parameters']['split'] = scene_name
             print(f"Evaling on '{scene_name}'.........")
-            metrics = self._eval(epoch, on_val=False, save_predictions=save_predictions)
-            all_metrics[scene_name] = metrics
+            try:
+                metrics = self._eval(epoch, on_val=False, save_predictions=save_predictions)
+                all_metrics[scene_name] = metrics
+            except FileNotFoundError as e:
+                print(f"Skipping '{scene_name}': {e}")
         return all_metrics
 
-    def eval(self, epoch, on_val=False, save_predictions=False):
+    def eval(self, epoch, on_val=False, save_predictions=False, eval_test_scene=False):
         print("Evaling on '%s' dataset........." % ("val" if on_val else "test"))
         metrics = self._eval(epoch, on_val=on_val, save_predictions=save_predictions)
         if not on_val:
             all_metrics = {}
             all_metrics['test'] = metrics
-            metrics = self.eval_scene(epoch, save_predictions=save_predictions)
+            if eval_test_scene:
+                metrics = self.eval_scene(epoch, save_predictions=save_predictions)
             all_metrics.update(metrics)
             print(f"All Metrics: {json.dumps(all_metrics, indent=4)}")
 

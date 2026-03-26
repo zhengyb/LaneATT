@@ -49,10 +49,8 @@ SPLIT_FILES = {
     "test": [
         #"test_label_20250501.json",
         # convert from LLAMAS
-        #"label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
-        #"label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
-        "tusimple_merged/test_1.json",
-        "tusimple_merged/test_2.json",
+        "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
+        "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
     ],
     "test_curve_case": [
     ],
@@ -89,8 +87,7 @@ class TuSimple(LaneDatasetLoader):
 
         self.anno_files = [os.path.join(self.root, path) for path in SPLIT_FILES[split]]
         if split in ['test', 'train', 'val']:
-            # self.add_openlane_anno_files(self.root, split)
-            pass
+            self.add_openlane_anno_files(self.root, split)
         elif split in ['test_highway_case']:
             pass
         elif split in ['test_curve_case', 'test_extreme_weather_case', 
