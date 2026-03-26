@@ -47,39 +47,37 @@ SPLIT_FILES = {
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
     ],
     "test": [
-        #"test_label_20250501.json",
+        # "test_label_20250501.json",
         # convert from LLAMAS
-        #"label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
-        #"label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
-        "tusimple_merged/test_1.json",
+        # "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
+        # "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
         "tusimple_merged/test_2.json",
+        "tusimple_merged/test_7.json",
+        "tusimple_merged/test_5.json",
+        "tusimple_merged/test_4.json",
+        "tusimple_merged/test_8.json",
+        "tusimple_merged/test_3.json",
+        "tusimple_merged/test_1.json",
+        "tusimple_merged/test_6.json",
     ],
-    "test_curve_case": [
-    ],
-    "test_extreme_weather_case": [
-    ],
-    "test_night_case": [
-    ],
-    "test_intersection_case": [
-    ],
-    "test_up_down_case": [
-    ],
-    "test_merge_split_case": [
-    ],
+    "test_curve_case": [],
+    "test_extreme_weather_case": [],
+    "test_night_case": [],
+    "test_intersection_case": [],
+    "test_up_down_case": [],
+    "test_merge_split_case": [],
     "test_highway_case": [
-        #"test_label_20250501.json",
+        # "test_label_20250501.json",
         # convert from LLAMAS
         "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
         "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
-    ],    
-    
-    
+    ],
 }
 
 
 class TuSimple(LaneDatasetLoader):
     def __init__(self, split="train", max_lanes=None, root=None):
-        self.name = 'tusimple'
+        self.name = "tusimple"
         self.split = split
         self.root = root
         self.logger = logging.getLogger(__name__)
@@ -88,14 +86,19 @@ class TuSimple(LaneDatasetLoader):
             raise Exception("Split `{}` does not exist.".format(split))
 
         self.anno_files = [os.path.join(self.root, path) for path in SPLIT_FILES[split]]
-        if split in ['test', 'train', 'val']:
+        if split in ["test", "train", "val"]:
             # self.add_openlane_anno_files(self.root, split)
             pass
-        elif split in ['test_highway_case']:
+        elif split in ["test_highway_case"]:
             pass
-        elif split in ['test_curve_case', 'test_extreme_weather_case', 
-                       'test_night_case', 'test_intersection_case', 
-                       'test_up_down_case', 'test_merge_split_case']:
+        elif split in [
+            "test_curve_case",
+            "test_extreme_weather_case",
+            "test_night_case",
+            "test_intersection_case",
+            "test_up_down_case",
+            "test_merge_split_case",
+        ]:
             self.get_scene_anno_files(self.root, split)
 
         if root is None:
@@ -110,7 +113,7 @@ class TuSimple(LaneDatasetLoader):
             self.max_lanes = max_lanes
 
     def get_scene_anno_files(self, root_dir, split):
-        scene_anno_filename = split.replace('test_', 'ol_scene_') + '.json'
+        scene_anno_filename = split.replace("test_", "ol_scene_") + ".json"
         self.anno_files = [os.path.join(root_dir, scene_anno_filename)]
 
     def add_openlane_anno_files(self, root_dir, split):
@@ -141,8 +144,8 @@ class TuSimple(LaneDatasetLoader):
         org_anno = label["old_anno"]
         pred = self.pred2lanes(org_anno["path"], lanes, org_anno["y_samples"])
         if use_f1:
-            #print(f"path: {org_anno['path']}")
-            #print(f"org_anno['lanes']: {org_anno['org_lanes']}")
+            # print(f"path: {org_anno['path']}")
+            # print(f"org_anno['lanes']: {org_anno['org_lanes']}")
             _, fp, fn, matches, ious_accs, _ = LaneEval.bench_f1(
                 pred, org_anno["org_lanes"], org_anno["y_samples"], 0, True
             )
@@ -160,12 +163,12 @@ class TuSimple(LaneDatasetLoader):
             xs = lane(ys)  # 采样点归一化的x坐标
             # xs > 1 is added by Reuben.
             invalid_mask = (xs < 0) | (xs > 1)  # 背景点mask
-            #invalid_mask = (xs < 0)
+            # invalid_mask = (xs < 0)
             lane = (xs * self.get_img_width(path)).astype(int)  # 反归一化到图像像素坐标
             lane[invalid_mask] = -2  # 背景点赋值为-2
-            #invalid_mask = (lane < 0)
-            #invalid_count = np.sum(invalid_mask)
-            #if len(ys) - invalid_count < 2:
+            # invalid_mask = (lane < 0)
+            # invalid_count = np.sum(invalid_mask)
+            # if len(ys) - invalid_count < 2:
             #    continue
             lanes.append(lane.tolist())
 
@@ -175,15 +178,17 @@ class TuSimple(LaneDatasetLoader):
         self.logger.info("Loading TuSimple annotations...")
         self.annotations = []
         # Waiting for the dataset to load is tedious, let's cache it
-        os.makedirs('anno_cache', exist_ok=True)
-        cache_path = 'anno_cache/tusimple_{}.pkl'.format(self.split)
+        os.makedirs("anno_cache", exist_ok=True)
+        cache_path = "anno_cache/tusimple_{}.pkl".format(self.split)
         if os.path.exists(cache_path):
-            with open(cache_path, 'rb') as cache_file:
+            with open(cache_path, "rb") as cache_file:
                 self.annotations = pkl.load(cache_file)
-                self.max_lanes = max(len(anno['lanes']) for anno in self.annotations)
-                print(f"Loaded {len(self.annotations)} annotations from cached file {cache_path}, MAX. lanes {self.max_lanes}")
+                self.max_lanes = max(len(anno["lanes"]) for anno in self.annotations)
+                print(
+                    f"Loaded {len(self.annotations)} annotations from cached file {cache_path}, MAX. lanes {self.max_lanes}"
+                )
                 return
-                    
+
         max_lanes = 0
         for anno_file in self.anno_files:  # 遍历所有标签文件
             with open(anno_file, "r") as anno_obj:  # 打开标签文件
@@ -194,7 +199,7 @@ class TuSimple(LaneDatasetLoader):
                 gt_lanes = data["lanes"]  # 1个image的gt_lanes
 
                 # 过滤掉没有gt_lanes的image
-                #if len(gt_lanes) == 0:
+                # if len(gt_lanes) == 0:
                 #    continue
                 # 过滤掉gt_lanes大于5条的image, openlane数据集的标注有问题???
                 if len(gt_lanes) > 5:
@@ -228,14 +233,16 @@ class TuSimple(LaneDatasetLoader):
             len(self.annotations),
             self.max_lanes,
         )
-        with open(cache_path, 'wb') as cache_file:
-            pkl.dump(self.annotations, cache_file)        
+        with open(cache_path, "wb") as cache_file:
+            pkl.dump(self.annotations, cache_file)
 
     def random_sample_annotations(self, sample_num, new_dataset_dir):
         import shutil
 
         sampled_annotations = random.sample(self.annotations, sample_num)
-        sampled_anno_filename = os.path.join(new_dataset_dir, f"sampled_anno_{self.split}.json")
+        sampled_anno_filename = os.path.join(
+            new_dataset_dir, f"sampled_anno_{self.split}.json"
+        )
         new_image_dir = os.path.join(new_dataset_dir, "images", self.split)
         if os.path.exists(new_image_dir):
             shutil.rmtree(new_image_dir)
@@ -256,7 +263,9 @@ class TuSimple(LaneDatasetLoader):
                 f.write(json.dumps(tusimple_anno))
                 f.write("\n")
 
-        print(f"Sampled {sample_num} annotations from {self.split} set of TuSimple dataset")
+        print(
+            f"Sampled {sample_num} annotations from {self.split} set of TuSimple dataset"
+        )
         return sampled_annotations
 
     def transform_annotations(self, transform):
@@ -296,11 +305,13 @@ class TuSimple(LaneDatasetLoader):
             merged_anno = self.anno_files[0]
 
         if use_f1:
-            result = json.loads(LaneEval.bench_one_submit_f1(pred_filename, merged_anno))
+            result = json.loads(
+                LaneEval.bench_one_submit_f1(pred_filename, merged_anno)
+            )
         else:
             result = json.loads(LaneEval.bench_one_submit(pred_filename, merged_anno))
             #  {'Accuracy': 0.9565514103730626, 'FP': 0.0803883295664674, 'FN': 0.04018560372577228, 'FPS': 1000.0}
-        
+
         table = {}
         for metric in result:
             table[metric["name"]] = metric["value"]
