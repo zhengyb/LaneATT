@@ -56,7 +56,7 @@ def main():
     #print(f"epoch: {epoch} Metrics on validation dataset:")
     #runner.eval(epoch=epoch, on_val=True, save_predictions=args.save_predictions)
     print(f"epoch: {epoch} Metrics on test dataset:")
-    runner.eval(epoch=epoch, on_val=False, save_predictions=args.save_predictions)
+    runner.eval(epoch=epoch, on_val=False, save_predictions=args.save_predictions, eval_test_scene=False)
 
 
 if __name__ == '__main__':
