@@ -36,27 +36,28 @@ Total Metrics: {
 ```
 
 ### 测试模型： ‘experiments/laneatt_r18_tusimple/models/model_0033.pt’
-- 备注: 上述RGB模型对应的pt模型
+- 备注: 上述RGB模型对应的pt模型,  conf_threshold: 0.3; nms_thres: 50.; nms_topk: 4
 - 测试工具： python main.py test --exp_name laneatt_r18_tusimple --epoch 33
 - 评估指标：
 ```
 All Metrics: {
     "test": {
-        "F1": 0.5478762764540477,
-        "Precision": 0.5368848496567727,
-        "Recall": 0.5593271555197421,
+        "F1": 0.5739937527889336,
+        "Precision": 0.6127434167905187,
+        "Recall": 0.5398536126779478,
         "FPS": 1000.0,
-        "TP": 16659,
-        "FP": 14370,
-        "FN": 13125
+        "TP": 16079,
+        "FP": 10162,
+        "FN": 13705
     },
-    "F1": 0.5478762764540477,
-    "Precision": 0.5368848496567727,
-    "Recall": 0.5593271555197421,
+    "F1": 0.5739937527889336,
+    "Precision": 0.6127434167905187,
+    "Recall": 0.5398536126779478,
     "FPS": 1000.0,
-    "TP": 16659,
-    "FP": 14370,
-    "FN": 13125
+    "TP": 16079,
+    "FP": 10162,
+    "FN": 13705
 }
+
 
 ```
