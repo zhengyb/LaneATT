@@ -139,8 +139,9 @@ class Runner:
                 #if False:
                     # (B, C, H, W) -> (H, W, C)
                     # 0~1 -> 0~255
+                    batch_size = images.shape[0]
                     for i in range(len(prediction)):
-                        img_idx = (idx*8)+i
+                        img_idx = idx * batch_size + i
                         if img_idx >= len(dataloader.dataset.annotations):
                             # if the batch size > 1, the img_idx may be out of range
                             break
