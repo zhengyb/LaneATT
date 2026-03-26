@@ -51,14 +51,6 @@ SPLIT_FILES = {
         # convert from LLAMAS
         # "label_llamas_images-2014-12-22-12-35-10_mapping_280S_ramps.json",
         # "label_llamas_images-2014-12-22-14-19-07_mapping_280S_3rd_lane.json",
-        "tusimple_merged/test_2.json",
-        "tusimple_merged/test_7.json",
-        "tusimple_merged/test_5.json",
-        "tusimple_merged/test_4.json",
-        "tusimple_merged/test_8.json",
-        "tusimple_merged/test_3.json",
-        "tusimple_merged/test_1.json",
-        "tusimple_merged/test_6.json",
     ],
     "test_curve_case": [],
     "test_extreme_weather_case": [],
@@ -88,6 +80,7 @@ class TuSimple(LaneDatasetLoader):
         self.anno_files = [os.path.join(self.root, path) for path in SPLIT_FILES[split]]
         if split in ["test", "train", "val"]:
             # self.add_openlane_anno_files(self.root, split)
+            self.add_carla_anno_files(self.root, split)
             pass
         elif split in ["test_highway_case"]:
             pass
@@ -111,6 +104,11 @@ class TuSimple(LaneDatasetLoader):
         # Force max_lanes, used when evaluating testing with models trained on other datasets
         if max_lanes is not None:
             self.max_lanes = max_lanes
+
+
+    def add_carla_anno_files(self, root_dir, split):
+        # TODO:
+        pass
 
     def get_scene_anno_files(self, root_dir, split):
         scene_anno_filename = split.replace("test_", "ol_scene_") + ".json"
