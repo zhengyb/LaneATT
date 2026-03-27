@@ -1,0 +1,94 @@
+# Ablation A1: bs=8, lr=0.0001, T_max=164745
+
+val_every: 999
+model_checkpoint_interval: 1
+seed: 0
+model:
+  name: LaneATT
+  parameters:
+    backbone: resnet18
+    S: 72
+    topk_anchors: 1000
+    anchors_freq_path: data/tusimple_250418pm_anchors_mask.pt
+    img_h: 360
+    img_w: 640
+batch_size: 8
+epochs: 15
+loss_parameters: {}
+train_parameters:
+  conf_threshold: null
+  nms_thres: 15.0
+  nms_topk: 3000
+test_parameters:
+  conf_threshold: 0.5
+  nms_thres: 50.0
+  nms_topk: 4
+optimizer:
+  name: Adam
+  parameters:
+    lr: 0.0001
+lr_scheduler:
+  name: CosineAnnealingLR
+  parameters:
+    T_max: 164745
+datasets:
+  train:
+    type: LaneDataset
+    parameters:
+      S: 72
+      dataset: tusimple
+      split: train
+      img_size:
+      - 360
+      - 640
+      max_lanes: 4
+      normalize: false
+      aug_chance: 1.0
+      augmentations:
+      - name: Affine
+        parameters:
+          translate_px:
+            x: !!python/tuple
+            - -25
+            - 25
+            y: !!python/tuple
+            - -10
+            - 10
+          rotate: !!python/tuple
+          - -6
+          - 6
+          scale: !!python/tuple
+          - 0.85
+          - 1.15
+      - name: HorizontalFlip
+        parameters:
+          p: 0.5
+      root: datasets/
+  test:
+    type: LaneDataset
+    parameters:
+      S: 72
+      dataset: tusimple
+      split: test
+      img_size:
+      - 360
+      - 640
+      max_lanes: 4
+      normalize: false
+      aug_chance: 0
+      augmentations: null
+      root: datasets/
+  val:
+    type: LaneDataset
+    parameters:
+      S: 72
+      dataset: tusimple
+      split: val
+      img_size:
+      - 360
+      - 640
+      max_lanes: 4
+      normalize: false
+      aug_chance: 0
+      augmentations: null
+      root: datasets/

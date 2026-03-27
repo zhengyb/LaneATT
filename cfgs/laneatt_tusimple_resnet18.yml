@@ -1,5 +1,5 @@
 # Model settings
-val_every: 2
+val_every: 10
 model_checkpoint_interval: 1
 seed: 0
 model:
@@ -9,35 +9,31 @@ model:
     S: &S 72
     topk_anchors: 1000
     #anchors_freq_path: 'data/tusimple_anchors_freq.pt'
-    anchors_freq_path: 'data/tusimple_250418pm_anchors_mask.pt'
-    #anchors_freq_path: 'data/tusimple_250423_anchors_mask.pt'
+    #anchors_freq_path: 'data/tusimple_250418pm_anchors_mask.pt'
+    anchors_freq_path: 'data/tusimple_carla_anchor_mask.pt'
+    #anchors_freq_path: 'data/sum_anchors_mask.pt'
     img_h: &img_h 360
     img_w: &img_w 640
 batch_size: 8
-epochs: 40
+epochs: 100
 loss_parameters: {}
 train_parameters:
   conf_threshold:
   nms_thres: 15.
   nms_topk: 3000
 test_parameters:
-  conf_threshold: 0.5
-  nms_thres: 50.
+  conf_threshold: 0.3 #0.2
+  nms_thres: 50. #45.
   nms_topk: &max_lanes 4
 optimizer:
   name: Adam
   parameters:
-    lr: 0.0003
+    lr: 0.0001
 lr_scheduler:
   name: CosineAnnealingLR
   parameters:
-    #T_max: 45400 # 100epochs * 454 iterations
-    #T_max: 18500 # 20 * 925 iterations
-    #T_max: 37000 # 40 * 925 iterations
-    #T_max: 98080 # 20 * 4904 iterations
-    #T_max: 216280 #20 * 10814 iterations
-    T_max: 432560  # 40 * 10814， 20250425PM1
-    #T_max: 865120  # 80 * 10814, 20250426AM1
+    T_max: 164745 # 100 * 454 iterations
+
 # Dataset settings
 datasets:
   train: &train
@@ -61,8 +57,8 @@ datasets:
         - name: HorizontalFlip
           parameters:
             p: 0.5
-
-      root: "datasets/TUSimple/tusimple"
+      root: "datasets/" 
+      #root: "datasets/TUSimple/tusimple"
 
   test:
     type: LaneDataset
@@ -75,8 +71,7 @@ datasets:
       normalize: false
       aug_chance: 0
       augmentations:
-      #root: "datasets/TUSimple/tusimple-test"
-      root: "datasets/tusimple-0325"
+      root: "datasets/"       #root: "datasets/TUSimple/tusimple-test"
 
   val:
     type: LaneDataset
@@ -89,5 +84,5 @@ datasets:
       normalize: false
       aug_chance: 0
       augmentations:
-      root: "datasets/TUSimple/tusimple"
-      #root: "datasets/sampled_tusimple"
+      root: "datasets/" 
+      #root: "datasets/TUSimple/tusimple"

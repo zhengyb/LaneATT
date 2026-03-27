@@ -49,6 +49,9 @@ def get_anchors_use_frequency(cfg, split='train', t_pos=15., t_neg=20.):
 
 def save_mask(cfg_path, output_path):
     cfg = Config(cfg_path)
+    # Remove anchors_freq_path so the model uses all anchors (unfiltered)
+    # This is necessary to compute frequencies for the full anchor set (2784)
+    cfg['model']['parameters']['anchors_freq_path'] = None
     frequency = get_anchors_use_frequency(cfg, split='train', t_pos=30., t_neg=35.)
     torch.save(frequency, output_path)
 
