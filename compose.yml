@@ -4,7 +4,7 @@ services:
     image: laneatt-dev:0.3
     #image: laneatt-demo:0.3
     command: bash
-    shm_size: '2gb'  # 增加共享内存
+    shm_size: '8gb'  # 增加共享内存
     deploy:
       resources:
         reservations:
