@@ -21,6 +21,8 @@ def parse_args():
     parser.add_argument("--deterministic",
                         action="store_true",
                         help="set cudnn.deterministic = True and cudnn.benchmark = False")
+    parser.add_argument("--lr-only", action="store_true",
+                        help="Only evaluate L and R lanes (ignore LL, RR, etc.)")
     args = parser.parse_args()
     if args.cfg is None and args.mode == "train":
         raise Exception("If you are training, you have to set a config file using --cfg /path/to/your/config.yaml")
@@ -46,7 +48,8 @@ def main():
     cfg = Config(cfg_path)
     exp.set_cfg(cfg, override=False)
     device = torch.device('cpu') if not torch.cuda.is_available() or args.cpu else torch.device('cuda')
-    runner = Runner(cfg, exp, device, view=args.view, resume=args.resume, deterministic=args.deterministic)
+    runner = Runner(cfg, exp, device, view=args.view, resume=args.resume, deterministic=args.deterministic,
+                    lr_only=args.lr_only)
     if args.mode == 'train':
         try:
             runner.train()

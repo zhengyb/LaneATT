@@ -11,12 +11,13 @@ import json
 
 
 class Runner:
-    def __init__(self, cfg, exp, device, resume=False, view=None, deterministic=False):
+    def __init__(self, cfg, exp, device, resume=False, view=None, deterministic=False, lr_only=False):
         self.cfg = cfg
         self.exp = exp
         self.device = device
         self.resume = resume
         self.view = view
+        self.lr_only = lr_only
         self.logger = logging.getLogger(__name__)
 
         # Fix seeds
@@ -213,7 +214,8 @@ class Runner:
         if save_predictions:
             with open('predictions.pkl', 'wb') as handle:
                 pickle.dump(predictions, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        metrics =  self.exp.eval_end_callback(dataloader.dataset.dataset, predictions, epoch)
+        metrics = self.exp.eval_end_callback(dataloader.dataset.dataset, predictions, epoch,
+                                               lr_only=self.lr_only)
         return metrics
 
     def get_train_dataloader(self):

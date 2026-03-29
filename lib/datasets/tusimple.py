@@ -348,7 +348,7 @@ class TuSimple(LaneDatasetLoader):
         with open(filename, "w") as output_file:
             output_file.write("\n".join(lines))
 
-    def eval_predictions(self, predictions, output_basedir, runtimes=None, use_f1=True):
+    def eval_predictions(self, predictions, output_basedir, runtimes=None, use_f1=True, lr_only=False):
         pred_filename = os.path.join(output_basedir, "tusimple_predictions.json")
         self.save_tusimple_predictions(predictions, pred_filename, runtimes)
         # merge anno_files
@@ -362,6 +362,9 @@ class TuSimple(LaneDatasetLoader):
         else:
             merged_anno = self.anno_files[0]
 
+        if lr_only:
+            merged_anno = self._filter_lr_only(merged_anno, output_basedir)
+
         if use_f1:
             result = json.loads(
                 LaneEval.bench_one_submit_f1(pred_filename, merged_anno)
@@ -374,6 +377,24 @@ class TuSimple(LaneDatasetLoader):
         for metric in result:
             table[metric["name"]] = metric["value"]
         return table
+
+    @staticmethod
+    def _filter_lr_only(anno_path, output_basedir):
+        """Filter annotations to keep only L and R lanes based on lane_names field."""
+        filtered_path = os.path.join(output_basedir, "merged_anno_lr_only.json")
+        with open(anno_path) as f_in, open(filtered_path, 'w') as f_out:
+            for line in f_in:
+                line = line.strip()
+                if not line:
+                    continue
+                data = json.loads(line)
+                lane_names = data.get('lane_names')
+                if lane_names:
+                    keep = [i for i, name in enumerate(lane_names) if name in ('L', 'R')]
+                    data['lanes'] = [data['lanes'][i] for i in keep]
+                    data['lane_names'] = [lane_names[i] for i in keep]
+                f_out.write(json.dumps(data) + '\n')
+        return filtered_path
 
     def __getitem__(self, idx):
         return self.annotations[idx]

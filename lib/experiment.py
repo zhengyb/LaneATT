@@ -126,19 +126,19 @@ class Experiment:
     def eval_start_callback(self, cfg):
         self.logger.debug('Beginning testing session. CFG used:\n%s', str(cfg))
 
-    def eval_end_callback(self, dataset, predictions, epoch_evaluated):
-        metrics = self.save_epoch_results(dataset, predictions, epoch_evaluated)
+    def eval_end_callback(self, dataset, predictions, epoch_evaluated, lr_only=False):
+        metrics = self.save_epoch_results(dataset, predictions, epoch_evaluated, lr_only=lr_only)
         self.logger.debug('Testing session finished on model after epoch %d.', epoch_evaluated)
         self.logger.info('Results:\n %s', str(metrics))
         return metrics
 
-    def save_epoch_results(self, dataset, predictions, epoch):
+    def save_epoch_results(self, dataset, predictions, epoch, lr_only=False):
         # setup dirs
         epoch_results_path = os.path.join(self.results_dirpath, 'epoch_{:04d}'.format(epoch))
         predictions_dir = os.path.join(epoch_results_path, '{}_predictions'.format(dataset.split))
         os.makedirs(predictions_dir, exist_ok=True)
         # eval metrics
-        metrics = dataset.eval_predictions(predictions, output_basedir=predictions_dir)
+        metrics = dataset.eval_predictions(predictions, output_basedir=predictions_dir, lr_only=lr_only)
         #self.logger.info('Metrics: %s', str(metrics))
         # log tensorboard metrics
         for key in metrics:
