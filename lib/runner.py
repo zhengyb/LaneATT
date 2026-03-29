@@ -95,6 +95,37 @@ class Runner:
                 print(f"Skipping '{scene_name}': {e}")
         return all_metrics
 
+    def eval_hk(self, epoch, save_predictions=False):
+        """Evaluate on per-Hk test subsets (H1-H6) if the split files exist."""
+        carla_dir = os.path.join(self.cfg['datasets']['test']['parameters']['root'], 'carla_tusimple')
+        if not os.path.isdir(carla_dir):
+            return {}
+
+        # Detect which Hk splits have annotation files
+        hk_list = []
+        for hk in ['H1', 'H2', 'H3', 'H4', 'H5', 'H6']:
+            prefix = f'{hk}_test'
+            if any(f.startswith(prefix) and f.endswith('.json') for f in os.listdir(carla_dir)):
+                hk_list.append(hk)
+
+        if not hk_list:
+            return {}
+
+        all_metrics = {}
+        for hk in hk_list:
+            split_name = f'test_{hk}'
+            self.cfg['datasets']['test']['parameters']['split'] = split_name
+            print(f"Evaling on '{split_name}'.........")
+            try:
+                metrics = self._eval(epoch, on_val=False, save_predictions=save_predictions)
+                all_metrics[split_name] = metrics
+            except (FileNotFoundError, Exception) as e:
+                print(f"Skipping '{split_name}': {e}")
+
+        # Restore original split
+        self.cfg['datasets']['test']['parameters']['split'] = 'test'
+        return all_metrics
+
     def eval(self, epoch, on_val=False, save_predictions=False, eval_test_scene=False):
         print("Evaling on '%s' dataset........." % ("val" if on_val else "test"))
         metrics = self._eval(epoch, on_val=on_val, save_predictions=save_predictions)
@@ -102,8 +133,10 @@ class Runner:
             all_metrics = {}
             all_metrics['test'] = metrics
             if eval_test_scene:
-                metrics = self.eval_scene(epoch, save_predictions=save_predictions)
-            all_metrics.update(metrics)
+                scene_metrics = self.eval_scene(epoch, save_predictions=save_predictions)
+                all_metrics.update(scene_metrics)
+            hk_metrics = self.eval_hk(epoch, save_predictions=save_predictions)
+            all_metrics.update(hk_metrics)
             print(f"All Metrics: {json.dumps(all_metrics, indent=4)}")
 
     def _eval(self, epoch, on_val=False, save_predictions=False):
