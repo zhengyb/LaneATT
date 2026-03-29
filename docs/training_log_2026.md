@@ -142,3 +142,20 @@ root@zyb-CORSAIR-VENGEANCE-i8100:/app#
 
 
 ```
+
+
+## 3. 未见过的中间安装高度测试
+- Town04, H7/8/9， test_1.json, test_2.json, val_1.json, val_2.json
+- epoch 43:
+```
+    "test": {
+        "F1": 0.9123661525377865,
+        "Precision": 0.9368103516710328,
+        "Recall": 0.8891651597347799,
+        "FPS": 1000.0,
+        "TP": 11801,
+        "FP": 796,
+        "FN": 1471
+    }
+
+```
