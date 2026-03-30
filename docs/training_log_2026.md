@@ -144,7 +144,7 @@ root@zyb-CORSAIR-VENGEANCE-i8100:/app#
 ```
 
 
-## 3. 未见过的中间安装高度测试
+## 3. 未见过的中间安装高度测试(Town04)
 - Town04, H7/8/9， test_1.json, test_2.json, val_1.json, val_2.json
 - model: epoch 43
 - All lane lines metrics:
@@ -170,6 +170,36 @@ root@zyb-CORSAIR-VENGEANCE-i8100:/app#
         "TP": 6347,
         "FP": 6250,
         "FN": 289
+    }
+
+```
+
+## 4. 未见过的地图Town01 + 未见过的中间高度H7/8/9
+- Town01, H7/8/9， train_1 ~ 5(这个地图是双向单车道)
+- model: epoch 43
+- All lane lines metrics:
+```
+    "test": {
+        "F1": 0.4677184144239692,
+        "Precision": 0.441,
+        "Recall": 0.497883149872989,
+        "FPS": 1000.0,
+        "TP": 7056,
+        "FP": 8944,
+        "FN": 7116
+    }
+
+```
+- LR lane lines only metrics: (因为模型不输出lane line名称，Precision不针对LR，这里主要关注Recall)
+```
+    "test": {
+        "F1": 0.4122749127934383,
+        "Precision": 0.2733125,
+        "Recall": 0.8387034906022248,
+        "FPS": 1000.0,
+        "TP": 4373,
+        "FP": 11627,
+        "FN": 841
     }
 
 ```
