@@ -72,7 +72,7 @@ datasets:
       aug_chance: 0
       augmentations:
       #root: "datasets/"       #root: "datasets/TUSimple/tusimple-test"
-      root: "datasets/tusimple-0329"       #root: "datasets/TUSimple/tusimple-test"
+      root: "datasets/tusimple-0401"       #root: "datasets/TUSimple/tusimple-test"
 
   val:
     type: LaneDataset

@@ -195,6 +195,85 @@ def inference_on_image(onnx_file_path, image_file_path, benchmark=False, visuali
 
     return lanes, result_img
 
+def inference_on_directory(onnx_file_path, image_dir, conf_threshold=0.5, nms_thres=50., nms_topk=4):
+    """Run inference on all JPG files in a directory, draw and save lane lines.
+
+    Args:
+        onnx_file_path: Path to the ONNX model file.
+        image_dir: Directory containing JPG images.
+        conf_threshold: Confidence threshold for NMS.
+        nms_thres: NMS overlap threshold.
+        nms_topk: Max lanes to keep after NMS.
+    """
+    if not os.path.exists(onnx_file_path):
+        print(f'ONNX file {onnx_file_path} not found!')
+        return
+
+    if not os.path.isdir(image_dir):
+        print(f'Directory {image_dir} not found!')
+        return
+
+    # Collect all jpg files (case-insensitive)
+    image_files = sorted([
+        os.path.join(image_dir, f) for f in os.listdir(image_dir)
+        if f.lower().endswith(('.jpg', '.jpeg'))
+    ])
+    if not image_files:
+        print(f'No JPG files found in {image_dir}')
+        return
+
+    print(f'Found {len(image_files)} JPG files in {image_dir}')
+
+    # Create ONNX session once
+    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    session = ort.InferenceSession(onnx_file_path, providers=providers)
+    input_name = session.get_inputs()[0].name
+
+    # Create output directory
+    output_dir = os.path.join(image_dir, 'lane_results')
+    os.makedirs(output_dir, exist_ok=True)
+
+    total = len(image_files)
+    detected = 0
+    for idx, image_file in enumerate(image_files):
+        basename = os.path.basename(image_file)
+        print(f'\r[{idx+1}/{total}] {basename}', end='', flush=True)
+
+        image_raw = cv2.imread(image_file)
+        if image_raw is None:
+            print(f'  -- skipped (unreadable)')
+            continue
+
+        # Preprocess
+        image = cv2.resize(image_raw, (640, 360), cv2.INTER_LINEAR)
+        image = image.astype(np.float32) / 255.0
+        image = image.transpose([2, 0, 1])
+        image = np.expand_dims(image, axis=0)
+
+        # Inference
+        try:
+            output = session.run(None, {input_name: image})[0]
+            proposals = do_nms(output, conf_threshold=conf_threshold, nms_thres=nms_thres, nms_topk=nms_topk)
+            if len(proposals) == 0:
+                continue
+            lanes = post_process(proposals)
+            if len(lanes) == 0:
+                continue
+        except Exception as e:
+            print(f'  -- error: {e}')
+            torch.cuda.empty_cache()
+            continue
+
+        detected += 1
+        # Draw lanes on original image
+        result_img = visualize_lanes(image_raw.copy(), lanes)
+        output_path = os.path.join(output_dir, basename.rsplit('.', 1)[0] + '_result.jpg')
+        cv2.imwrite(output_path, result_img)
+
+    print(f'\nDone. {detected}/{total} images had lanes detected.')
+    print(f'Results saved to {output_dir}')
+
+
 def pred2lanes(pred, y_samples, img_h, img_w):
     """Convert lane predictions to TuSimple format.
     
@@ -331,8 +410,26 @@ def generate_anno_path_list(anno_dir_root, split):
     return anno_files
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='LaneATT ONNX inference')
+    parser.add_argument('--onnx', type=str, default='./onnx/LaneATT_test-0529RGB.sim.onnx', help='Path to ONNX model')
+    parser.add_argument('--image_dir', type=str, default=None, help='Directory of JPG images for batch inference')
+    parser.add_argument('--conf', type=float, default=0.5, help='Confidence threshold')
+    parser.add_argument('--nms_thres', type=float, default=50., help='NMS overlap threshold')
+    parser.add_argument('--nms_topk', type=int, default=4, help='Max lanes to keep')
+    args = parser.parse_args()
+
+    onnx_file = args.onnx
+
+    # Batch inference on a directory
+    if args.image_dir is not None:
+        inference_on_directory(onnx_file, args.image_dir,
+                              conf_threshold=args.conf,
+                              nms_thres=args.nms_thres,
+                              nms_topk=args.nms_topk)
+        exit(0)
+
     #onnx_file = './onnx/LaneATT_r18_tusimple-0513.onnx'
-    onnx_file = './onnx/LaneATT_test-0529RGB.sim.onnx'
 
     if False:
         
