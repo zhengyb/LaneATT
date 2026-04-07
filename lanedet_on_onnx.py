@@ -365,7 +365,7 @@ if __name__ == '__main__':
         validate_onnx_model(onnx_file, dataset_anno_path)
         print("Validate onnx model done")
 
-    if True:
+    if False:
         metrics_list = []
         anno_dir_root = 'datasets/tusimple-0325/tusimple_merged/'
         split = 'test'
