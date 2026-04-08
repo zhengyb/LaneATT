@@ -1,4 +1,5 @@
 import os
+import json
 import argparse
 import cv2
 import torch
@@ -42,6 +43,32 @@ def draw_lanes(img, pred):
     return img
 
 
+# Standard TuSimple h_samples for 720p images: y from 160 to 710, step 10
+TUSIMPLE_H_SAMPLES = list(range(160, 720, 10))
+
+
+def pred2tusimple(pred, h_samples, img_h, img_w):
+    """Convert Lane predictions to TuSimple annotation format.
+
+    Args:
+        pred: List of Lane objects (from model.decode with as_lanes=True).
+              Each Lane is callable: lane(ys) returns interpolated x coords.
+        h_samples: List of y pixel coordinates to sample.
+        img_h: Original image height.
+        img_w: Original image width.
+    Returns:
+        lanes: List of lists, each inner list is x-coords at h_samples (-2 = invalid).
+    """
+    ys = np.array(h_samples, dtype=np.float64) / img_h  # normalize to [0,1]
+    lanes = []
+    for lane in pred:
+        xs = lane(ys)  # spline interpolation, -2 for out-of-range
+        pixel_xs = (xs * img_w).astype(int)
+        pixel_xs[(xs < 0) | (xs > 1)] = -2  # mark invalid
+        lanes.append(pixel_xs.tolist())
+    return lanes
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='LaneATT PyTorch batch inference on a directory')
     parser.add_argument('--image_dir', type=str, required=True, help='Directory containing JPG images')
@@ -58,6 +85,12 @@ def parse_args():
     parser.add_argument('--nms_topk', type=int, default=4, help='Max lanes to keep after NMS')
     parser.add_argument('--output_dir', type=str, default=None,
                         help='Output directory (default: <image_dir>/lane_results)')
+    parser.add_argument('--anno', action='store_true',
+                        help='Generate TuSimple annotation JSON file')
+    parser.add_argument('--anno_file', type=str, default=None,
+                        help='Annotation output path (default: <output_dir>/annotations.json)')
+    parser.add_argument('--h_samples', type=str, default=None,
+                        help='Comma-separated h_samples, or "auto" to use standard TuSimple 720p samples (default: auto)')
     return parser.parse_args()
 
 
@@ -90,11 +123,22 @@ if __name__ == '__main__':
     model.load_state_dict(state_dict)
     model.to(device).eval()
 
+    # Determine h_samples for annotation
+    if args.h_samples:
+        h_samples = [int(x) for x in args.h_samples.split(',')]
+    else:
+        h_samples = TUSIMPLE_H_SAMPLES  # standard 720p: range(160, 720, 10)
+
+    anno_path = args.anno_file or os.path.join(output_dir, 'annotations.json')
+
     print(f'Model loaded: {args.model_path}')
     print(f'Processing {len(image_files)} images from {args.image_dir}')
+    if args.anno:
+        print(f'Annotation h_samples: {h_samples[0]}..{h_samples[-1]}, step={h_samples[1]-h_samples[0]}, count={len(h_samples)}')
 
     total = len(image_files)
     detected = 0
+    anno_list = []
 
     with torch.no_grad():
         for idx, fname in enumerate(image_files):
@@ -104,6 +148,7 @@ if __name__ == '__main__':
                 print(f'[{idx+1}/{total}] {fname} -- skipped (unreadable)')
                 continue
 
+            img_h, img_w = img.shape[:2]
             img_pre = preprocess(img).to(device)
             output = model(img_pre, conf_threshold=args.conf,
                            nms_thres=args.nms_thres, nms_topk=args.nms_topk)
@@ -118,7 +163,25 @@ if __name__ == '__main__':
 
             out_path = os.path.join(output_dir, fname)
             cv2.imwrite(out_path, result_img)
+
+            # Generate TuSimple annotation
+            if args.anno:
+                lanes = pred2tusimple(pred, h_samples, img_h, img_w) if n_lanes > 0 else []
+                anno = {
+                    'raw_file': fname,
+                    'h_samples': h_samples,
+                    'lanes': lanes,
+                }
+                anno_list.append(anno)
+
             print(f'[{idx+1}/{total}] {fname}: {n_lanes} lanes')
+
+    # Save annotation file (JSON lines, same as TuSimple format)
+    if args.anno and anno_list:
+        with open(anno_path, 'w') as f:
+            for anno in anno_list:
+                f.write(json.dumps(anno) + '\n')
+        print(f'Annotations saved to {anno_path} ({len(anno_list)} entries)')
 
     print(f'\nDone. {detected}/{total} images had lanes detected.')
     print(f'Results saved to {output_dir}')
